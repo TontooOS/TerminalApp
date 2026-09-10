@@ -35,6 +35,7 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-09-10: ISO requires `vte4` package (missing lib crashed with exit 127).
 - 2026-09-10: Prompt format enforced via precmd hook (wins over grml/oh-my-zsh themes).
 - 2026-09-10: OSC 7 cwd reporting in prompt file, title click opens the real folder.
 - 2026-09-10: `exit` closes the window, 1170x600 default (1.3x width), ISO staging via TBuild into `/Applications/Terminal.app`.

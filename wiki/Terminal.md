@@ -266,7 +266,9 @@ The bundle contains the release binary (`App/`), the icon
 (`Resources/app_icon.png`, 1024x1024) and `Resources/lang/` (`lang/`).
 The ISO stages it via `BaseOS/scripts/stage-terminal.sh` (TBuild, like
 Weather) into `/Applications/Terminal.app`, with lang plus prompt
-fallbacks under `/usr/share/terminal/`.
+fallbacks under `/usr/share/terminal/`. The ISO package list
+(`BaseOS/archiso/packages.x86_64`) must contain `vte4`: the binary links
+`libvte-2.91-gtk4.so.0` and exits with code 127 without it.
 The runtime lookup covers the bundle layout
 (`<Name>.app/Resources/lang`), dev checkouts (`lang/`,
 `Resources/`) and installed files (`/usr/share/terminal/`).
