@@ -34,9 +34,44 @@ pub fn shell_basename(shell: &str) -> &str {
   shell.rsplit('/').next().unwrap_or(shell)
 }
 
+/// Home directory of the current user.
+///
+/// `$HOME` wins when it points to an existing directory (covers `su`
+/// without login where `HOME` still points at the real home). Otherwise
+/// the passwd entry for the current uid is used, so root reliably lands
+/// in `/root` instead of `/`. Last resort is `/tmp`, never `/`.
+pub fn home_dir() -> String {
+  if let Ok(value) = std::env::var("HOME") {
+    if !value.is_empty() && std::path::Path::new(&value).is_dir() {
+      return value;
+    }
+  }
+  if let Some(dir) = passwd_home() {
+    if std::path::Path::new(&dir).is_dir() {
+      return dir;
+    }
+  }
+  "/tmp".to_string()
+}
+
+/// Home directory from the passwd database for the current uid.
+fn passwd_home() -> Option<String> {
+  unsafe {
+    let pwd = libc::getpwuid(libc::getuid());
+    if pwd.is_null() || (*pwd).pw_dir.is_null() {
+      return None;
+    }
+    std::ffi::CStr::from_ptr((*pwd).pw_dir)
+      .to_str()
+      .ok()
+      .map(|s| s.to_string())
+  }
+}
+
 /// Terminal font. SF Mono is the TontooOS monospace face (SF family).
+/// 9pt fits roughly twice as many cells as 13pt.
 pub fn font_description() -> String {
-  "SF Mono 13, Adwaita Mono 13, Monospace 13".to_string()
+  "SF Mono 9, Adwaita Mono 9, Monospace 9".to_string()
 }
 
 /// Scrollback lines kept in memory.
@@ -51,8 +86,8 @@ pub const VISUAL_BELL: bool = true;
 /// TontooOS background tokens (match AGENTS.md).
 pub const BG_DARK: &str = "#1d1d1d";
 pub const BG_LIGHT: &str = "#ececec";
-/// Foreground tokens.
-pub const FG_DARK: &str = "#F5F5F7";
+/// Foreground tokens. Dark mode uses phosphor green (Apple terminal look).
+pub const FG_DARK: &str = "#33ff33";
 pub const FG_LIGHT: &str = "#1E1E1E";
 
 /// Classic 16-color ANSI palette (macOS-like, readable on both schemes).
@@ -79,5 +114,18 @@ mod tests {
   #[test]
   fn palette_has_sixteen_entries() {
     assert_eq!(PALETTE.len(), 16);
+  }
+
+  #[test]
+  fn home_dir_is_existing_directory() {
+    let home = home_dir();
+    assert!(!home.is_empty());
+    assert_ne!(home, "/");
+    assert!(std::path::Path::new(&home).is_dir());
+  }
+
+  #[test]
+  fn dark_foreground_is_phosphor_green() {
+    assert_eq!(FG_DARK, "#33ff33");
   }
 }

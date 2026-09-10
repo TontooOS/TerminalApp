@@ -65,6 +65,10 @@ pub fn resolve_shell() -> String
 Returns the shell binary path. Never returns an empty string; falls
 back to `/bin/bash` then `/bin/sh` so the window always opens.
 
+The shell starts in the current user home (`src/config.rs::home_dir()`:
+`$HOME` when it is an existing directory, else the passwd entry for the
+current uid, so root lands in `/root`; last resort `/tmp`, never `/`).
+
 ### `shell_basename`
 
 ```rust
@@ -110,16 +114,18 @@ follow the live scheme on every rebuild.
 | Token | Dark | Light |
 |---|---|---|
 | Background | `#1d1d1d` | `#ececec` |
-| Primary text | `#F5F5F7` | `#1E1E1E` |
+| Primary text | `#33ff33` (phosphor green) | `#1E1E1E` |
 | Palette | 16 ANSI colors | 16 ANSI colors |
 
 The VTE background is transparent (`set_clear_background(false)` plus
 `vte-terminal { background-color: transparent; }`), so the UIKit window
 background (Dark `#1d1d1d` / Light `#ececec` at alpha `0.85` with
-`20px` blur) shows through uniformly.
+`20px` blur) shows through uniformly. Only the foreground text is
+green; chrome, palette and selection keep their normal colors.
 
-All text uses the SF family: `SF Mono` for the terminal cells
-(`SF Mono 13, Adwaita Mono 13, Monospace 13` fallback chain),
+All text uses the SF family: `SF Mono` at 9pt for the terminal cells
+(`SF Mono 9, Adwaita Mono 9, Monospace 9` fallback chain, roughly twice
+as many cells as 13pt),
 `SF Pro Display` for the decoration bar (UIKit default). System paths
 are `/usr/share/fonts/OTF/SF-Pro-Display-Regular.otf` and the Mono
 equivalent.

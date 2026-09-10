@@ -157,7 +157,7 @@ fn flash_visual_bell(term: &vte4::Terminal) {
 fn spawn_shell(term: &vte4::Terminal) {
   use vte4::prelude::TerminalExtManual;
   let shell = config::resolve_shell();
-  let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+  let home = config::home_dir();
   // Inherit the current environment so PATH, LANG, TERM etc. survive.
   let env: Vec<String> = std::env::vars().map(|(k, v)| format!("{k}={v}")).collect();
   let env_refs: Vec<&str> = env.iter().map(|s| s.as_str()).collect();

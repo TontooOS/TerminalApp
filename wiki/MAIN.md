@@ -35,4 +35,5 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-09-10: 9pt SF Mono (double content), phosphor green text in Dark mode, home dir via passwd lookup (root lands in `/root`).
 - 2026-09-10: Initial Terminal v1 (VTE view, Mac bar with live title, transparent medium glass, zsh default, `lang/en_us.json` and `lang/de_de.json`).
