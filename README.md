@@ -6,10 +6,6 @@ Terminal for TontooOS: macOS-style VTE terminal with live title (running program
 
 Explore more at https://github.com/TontooOS/TontooOS
 
-## Wiki
-
-See [wiki/MAIN.md](wiki/MAIN.md) for the full documentation.
-
 ## License
 
 TCL v26.1
