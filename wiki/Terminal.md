@@ -175,6 +175,11 @@ source the real files first (`/etc/zsh/*`, then `$TONTOO_REALHOME/.*`)
 and the prompt file last, so aliases, completions and themes keep
 working while the green prompt wins. Other shells spawn untouched.
 
+The prompt file also reports the current folder to VTE via OSC 7
+(`precmd`/`chpwd` hooks, space and percent encoded). Stock zsh never
+sends this on its own; without it VTE keeps an empty directory uri and
+the title plus title-click fall back to home.
+
 | Function | Behavior |
 |---|---|
 | `prompt_path()` | Finds `tontoo-prompt.zsh` (bundle `Resources/`, dev checkout, `/usr/share/terminal/`) |

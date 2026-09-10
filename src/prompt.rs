@@ -88,6 +88,13 @@ mod tests {
   }
 
   #[test]
+  fn prompt_file_reports_cwd_via_osc7() {
+    let content = include_str!("../Resources/tontoo-prompt.zsh");
+    assert!(content.contains("]7;"));
+    assert!(content.contains("add-zsh-hook"));
+  }
+
+  #[test]
   fn zdotdir_sources_real_config_before_prompt() {
     let fake = PathBuf::from("/nonexistent/tontoo-prompt.zsh");
     let Some(dir) = prepare_zdotdir(&fake) else {

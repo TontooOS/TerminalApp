@@ -35,6 +35,7 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-09-10: OSC 7 cwd reporting in prompt file, title click opens the real folder.
 - 2026-09-10: `exit` closes the window, 1170x600 default (1.3x width), ISO staging via TBuild into `/Applications/Terminal.app`.
 - 2026-09-10: `user@machine folder %` prompt format, title click opens current folder in Finder.
 - 2026-09-10: Green `[user@machine folder]` prompt only (zsh ZDOTDIR delegation, text back to white).
