@@ -222,12 +222,27 @@ fn spawn_shell(term: &vte4::Terminal) {
     || {},
     -1,
     None::<&gtk::gio::Cancellable>,
-    move |result| {
-      if let Err(err) = result {
-        eprintln!("Terminal: failed to spawn {shell_name}: {err}");
+    {
+      let weak = term.downgrade();
+      move |result| {
+        if let Err(err) = result {
+          eprintln!("Terminal: failed to spawn {shell_name}: {err}");
+          // No shell, no window: close instead of showing a dead terminal.
+          if let Some(term) = weak.upgrade() {
+            close_window(&term);
+          }
+        }
       }
     },
   );
+}
+
+/// Close the toplevel window (used when the shell exits).
+fn close_window(term: &vte4::Terminal) {
+  let Some(root) = term.root() else { return };
+  if let Ok(window) = root.downcast::<gtk::Window>() {
+    window.close();
+  }
 }
 
 fn configure(term: &vte4::Terminal) {
@@ -276,10 +291,8 @@ fn connect_signals(term: &vte4::Terminal) {
     }
   });
   term.connect_child_exited(|term, _status| {
-    // Minimal v1: respawn a fresh shell so the window stays usable.
-    OSC_TITLE.with(|c| c.borrow_mut().clear());
-    spawn_shell(term);
-    refresh_title(term);
+    // `exit` (or shell EOF) closes the window, like macOS Terminal.
+    close_window(term);
   });
   term.connect_bell(|term| {
     flash_visual_bell(term);

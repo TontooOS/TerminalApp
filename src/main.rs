@@ -24,7 +24,8 @@ impl AppDelegate for TerminalDelegate {
 
 fn main() {
   lang::init();
-  let mut app = App::with_delegate(lang::t("app.title"), 900, 600, TerminalDelegate);
+  // 1170x600: 1.3x the base 900 width, same height.
+  let mut app = App::with_delegate(lang::t("app.title"), 1170, 600, TerminalDelegate);
   app.set_window_type(WindowType::Mac);
   // Medium glass: transparent background plus backdrop blur.
   app.set_window_transparency(0.85);

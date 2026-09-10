@@ -1,6 +1,6 @@
 # Terminal – Wiki
 
-Terminal is the TontooOS terminal emulator: a 900x600 UIKit window with
+Terminal is the TontooOS terminal emulator: a 1170x600 UIKit window with
 a macOS-style decoration bar (`WindowType::Mac`) and a single VTE
 terminal filling the content area. The bar title follows the running
 program (OSC 0/1/2 window title), else the current path. The background
@@ -35,6 +35,7 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-09-10: `exit` closes the window, 1170x600 default (1.3x width), ISO staging via TBuild into `/Applications/Terminal.app`.
 - 2026-09-10: `user@machine folder %` prompt format, title click opens current folder in Finder.
 - 2026-09-10: Green `[user@machine folder]` prompt only (zsh ZDOTDIR delegation, text back to white).
 - 2026-09-10: 9pt SF Mono (double content), phosphor green text in Dark mode, home dir via passwd lookup (root lands in `/root`).

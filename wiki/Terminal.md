@@ -15,7 +15,7 @@ From top to bottom the window contains:
 2. VTE terminal (fills the remaining area, transparent background)
 
 ```rust
-let mut app = App::with_delegate(lang::t("app.title"), 900, 600, TerminalDelegate);
+let mut app = App::with_delegate(lang::t("app.title"), 1170, 600, TerminalDelegate);
 app.set_window_type(WindowType::Mac);
 app.set_window_transparency(0.85);
 app.set_window_blur(20.0);
@@ -78,8 +78,9 @@ pub fn shell_basename(shell: &str) -> &str
 Returns the file name of a shell path (`/bin/zsh` becomes `zsh`).
 Used for fallback titles.
 
-Child exit respawns a fresh shell automatically (`connect_child_exited`),
-so the window stays usable after `exit`.
+Child exit (`exit` or shell EOF) closes the window
+(`connect_child_exited`), like macOS Terminal. A failed spawn closes the
+window as well instead of showing a dead terminal.
 
 ## Title
 
@@ -91,7 +92,7 @@ The bar shows the running program when it sets an OSC 0/1/2 title
 |---|---|---|
 | `window-title-changed` | `OSC_TITLE` | Bar updates immediately via `refresh_title()` |
 | `current-directory-uri-changed` | `CWD_URI` | Bar updates only when no OSC title is set |
-| `child-exited` | `OSC_TITLE` cleared | Title falls back to path, shell respawns |
+| `child-exited` | window | Closes the window (`exit` quits like macOS Terminal) |
 
 ```rust
 fn display_title() -> String
@@ -253,6 +254,9 @@ tbuild app /path/to/Terminal
 
 The bundle contains the release binary (`App/`), the icon
 (`Resources/app_icon.png`, 1024x1024) and `Resources/lang/` (`lang/`).
+The ISO stages it via `BaseOS/scripts/stage-terminal.sh` (TBuild, like
+Weather) into `/Applications/Terminal.app`, with lang plus prompt
+fallbacks under `/usr/share/terminal/`.
 The runtime lookup covers the bundle layout
 (`<Name>.app/Resources/lang`), dev checkouts (`lang/`,
 `Resources/`) and installed files (`/usr/share/terminal/`).
