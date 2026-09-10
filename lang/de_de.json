@@ -2,5 +2,6 @@
   "app.title": "Terminal",
   "app.name": "Terminal",
   "terminal.untitled": "Terminal",
-  "terminal.shell_exited": "Shell beendet, neue Shell gestartet"
+  "terminal.shell_exited": "Shell beendet, neue Shell gestartet",
+  "title.open_in_finder": "Im Finder öffnen"
 }

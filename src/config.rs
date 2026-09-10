@@ -29,7 +29,6 @@ pub fn resolve_shell() -> String {
 }
 
 /// Short shell name for fallback titles (e.g. `/bin/zsh` -> `zsh`).
-#[allow(dead_code)]
 pub fn shell_basename(shell: &str) -> &str {
   shell.rsplit('/').next().unwrap_or(shell)
 }
@@ -86,8 +85,9 @@ pub const VISUAL_BELL: bool = true;
 /// TontooOS background tokens (match AGENTS.md).
 pub const BG_DARK: &str = "#1d1d1d";
 pub const BG_LIGHT: &str = "#ececec";
-/// Foreground tokens. Dark mode uses phosphor green (Apple terminal look).
-pub const FG_DARK: &str = "#33ff33";
+/// Foreground tokens. The prompt file paints `[user@machine folder]`
+/// green; typed text and output stay in the normal foreground.
+pub const FG_DARK: &str = "#F5F5F7";
 pub const FG_LIGHT: &str = "#1E1E1E";
 
 /// Classic 16-color ANSI palette (macOS-like, readable on both schemes).
@@ -125,7 +125,7 @@ mod tests {
   }
 
   #[test]
-  fn dark_foreground_is_phosphor_green() {
-    assert_eq!(FG_DARK, "#33ff33");
+  fn dark_foreground_is_plain_white() {
+    assert_eq!(FG_DARK, "#F5F5F7");
   }
 }

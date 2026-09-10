@@ -62,6 +62,7 @@ fn set_decoration_label(widget: &gtk::Widget, title: &str) -> bool {
   if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
     if label.has_css_class("uikit-titlebar-title") {
       label.set_text(title);
+      make_title_open_finder(&label);
       return true;
     }
   }
@@ -74,6 +75,44 @@ fn set_decoration_label(widget: &gtk::Widget, title: &str) -> bool {
     child = next;
   }
   false
+}
+
+/// Make the decoration-bar title open the current folder in Finder.
+/// Called on every title refresh; the click controller is attached only
+/// once per label (rebuilds create fresh labels).
+fn make_title_open_finder(label: &gtk::Label) {
+  label.set_cursor_from_name(Some("pointer"));
+  label.set_tooltip_text(Some(&crate::lang::t("title.open_in_finder")));
+  let already = label
+    .observe_controllers()
+    .into_iter()
+    .any(|item| item.map(|obj| obj.is::<gtk::GestureClick>()).unwrap_or(false));
+  if already {
+    return;
+  }
+  let click = gtk::GestureClick::new();
+  click.connect_pressed(|_, _, _, _| open_cwd_in_finder());
+  label.add_controller(click);
+}
+
+/// Current shell folder as a filesystem path (passwd-resolved home fallback).
+fn cwd_path() -> String {
+  let uri = CWD_URI.with(|c| c.borrow().clone());
+  if let Some(path) = uri_to_path(&uri) {
+    if !path.is_empty() {
+      return path;
+    }
+  }
+  config::home_dir()
+}
+
+/// Open the current folder in the file manager (native Finder first).
+fn open_cwd_in_finder() {
+  let dir = cwd_path();
+  if std::process::Command::new("finder").arg(&dir).spawn().is_ok() {
+    return;
+  }
+  let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
 }
 
 fn uri_to_path(uri: &str) -> Option<String> {
@@ -158,8 +197,19 @@ fn spawn_shell(term: &vte4::Terminal) {
   use vte4::prelude::TerminalExtManual;
   let shell = config::resolve_shell();
   let home = config::home_dir();
+  // Green [user@machine folder] prompt (zsh only): the generated $ZDOTDIR
+  // sources the real user config first and our prompt last.
+  let zdotdir = if config::shell_basename(&shell) == "zsh" {
+    crate::prompt::prompt_path().and_then(|path| crate::prompt::prepare_zdotdir(&path))
+  } else {
+    None
+  };
   // Inherit the current environment so PATH, LANG, TERM etc. survive.
-  let env: Vec<String> = std::env::vars().map(|(k, v)| format!("{k}={v}")).collect();
+  let mut env: Vec<String> = std::env::vars().map(|(k, v)| format!("{k}={v}")).collect();
+  env.push(format!("TONTOO_REALHOME={home}"));
+  if let Some(dir) = &zdotdir {
+    env.push(format!("ZDOTDIR={}", dir.display()));
+  }
   let env_refs: Vec<&str> = env.iter().map(|s| s.as_str()).collect();
   let argv = [shell.as_str()];
   let shell_name = shell.clone();
@@ -317,5 +367,13 @@ mod tests {
       Some("/home/user/project")
     );
     assert_eq!(basename("/home/user/project/"), "project");
+  }
+
+  #[test]
+  fn cwd_path_falls_back_to_existing_home() {
+    CWD_URI.with(|c| c.borrow_mut().clear());
+    let path = cwd_path();
+    assert!(!path.is_empty());
+    assert!(std::path::Path::new(&path).is_dir());
   }
 }

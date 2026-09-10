@@ -105,6 +105,13 @@ The title is pushed to both the GTK window (`window.set_title`, used by
 the compositor and task switcher) and the UIKit decoration label (the
 `uikit-titlebar-title` label found by tree walk).
 
+Clicking the title opens the current shell folder in the file manager
+(pointer cursor plus `title.open_in_finder` tooltip). The click handler
+prefers the native `finder` binary and falls back to `xdg-open`; the
+path comes from `current-directory-uri` with the passwd-resolved home
+as fallback. The click controller is attached once per label, so signal
+refreshes between rebuilds never stack handlers.
+
 ## Colors
 
 Full ANSI color support comes from VTE plus a 16-entry macOS-like
@@ -114,14 +121,15 @@ follow the live scheme on every rebuild.
 | Token | Dark | Light |
 |---|---|---|
 | Background | `#1d1d1d` | `#ececec` |
-| Primary text | `#33ff33` (phosphor green) | `#1E1E1E` |
+| Primary text | `#F5F5F7` | `#1E1E1E` |
+| Prompt `[user@machine folder]` | green (ANSI 2) | green (ANSI 2) |
 | Palette | 16 ANSI colors | 16 ANSI colors |
 
 The VTE background is transparent (`set_clear_background(false)` plus
 `vte-terminal { background-color: transparent; }`), so the UIKit window
 background (Dark `#1d1d1d` / Light `#ececec` at alpha `0.85` with
-`20px` blur) shows through uniformly. Only the foreground text is
-green; chrome, palette and selection keep their normal colors.
+`20px` blur) shows through uniformly. Typed text and program output use
+the normal foreground; only the prompt is green (see `Prompt` below).
 
 All text uses the SF family: `SF Mono` at 9pt for the terminal cells
 (`SF Mono 9, Adwaita Mono 9, Monospace 9` fallback chain, roughly twice
@@ -145,6 +153,40 @@ pub const VISUAL_BELL: bool = true;
 The visual flash drops the terminal opacity to `0.75` and restores it
 after `90ms` via `glib::timeout_add_local_once`. Both bells fire for
 ASCII BEL (`\x07`) and OSC bell sequences handled inside VTE.
+
+## Prompt
+
+Only the prompt is green: `user@machine folder %` in ANSI color 2
+(palette `#00c200`, readable on both schemes). Typed text and output
+stay in the normal foreground.
+
+`Resources/tontoo-prompt.zsh` defines it in zsh syntax (`%#` renders
+`%` for users and `#` for root):
+
+```zsh
+PROMPT='%F{2}%n@%m %~ %#%f '
+```
+
+zsh reads rc files from `$ZDOTDIR`, so the app points it at a generated
+dir (`$XDG_RUNTIME_DIR/tontoo-terminal`, fallback
+`/tmp/tontoo-terminal-<uid>`). The generated `.zshenv` / `.zshrc`
+source the real files first (`/etc/zsh/*`, then `$TONTOO_REALHOME/.*`)
+and the prompt file last, so aliases, completions and themes keep
+working while the green prompt wins. Other shells spawn untouched.
+
+| Function | Behavior |
+|---|---|
+| `prompt_path()` | Finds `tontoo-prompt.zsh` (bundle `Resources/`, dev checkout, `/usr/share/terminal/`) |
+| `prepare_zdotdir(prompt)` | Writes the delegating rc files, returns the dir (`None` when not writable) |
+
+```rust
+pub fn prompt_path() -> Option<PathBuf>
+pub fn prepare_zdotdir(prompt: &Path) -> Option<PathBuf>
+```
+
+`prepare_zdotdir` returns `None` when the runtime dir is not writable;
+the shell then starts as plain zsh without the green prompt, never
+failing the window.
 
 ## Scrollback and input
 
@@ -178,6 +220,7 @@ and the localized `name` in `Info.tontoo`). Keep both locations in sync.
 | `app.name` | `Terminal` | `Terminal` |
 | `terminal.untitled` | `Terminal` | `Terminal` |
 | `terminal.shell_exited` | `Shell exited, new shell started` | `Shell beendet, neue Shell gestartet` |
+| `title.open_in_finder` | `Open in Finder` | `Im Finder öffnen` |
 
 ### `t(key)`
 

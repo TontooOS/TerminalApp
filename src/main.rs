@@ -7,6 +7,7 @@
 
 mod config;
 mod lang;
+mod prompt;
 mod terminal;
 
 sdk::preinclude!();
