@@ -208,8 +208,9 @@ the `.app` bundle:
 tbuild app /path/to/Terminal
 ```
 
-The bundle contains the release binary (`App/`), `Resources/lang/`
-(`lang/`). The runtime lookup covers the bundle layout
+The bundle contains the release binary (`App/`), the icon
+(`Resources/app_icon.png`, 1024x1024) and `Resources/lang/` (`lang/`).
+The runtime lookup covers the bundle layout
 (`<Name>.app/Resources/lang`), dev checkouts (`lang/`,
 `Resources/`) and installed files (`/usr/share/terminal/`).
 

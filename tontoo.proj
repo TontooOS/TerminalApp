@@ -1,5 +1,6 @@
 {
   "bundle_id": "com.tontoo.terminal",
   "name": "Terminal",
-  "version": "26.1.0"
+  "version": "26.1.0",
+  "icon": "Resources/app_icon.png"
 }
