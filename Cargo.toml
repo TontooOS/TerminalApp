@@ -1,0 +1,23 @@
+[package]
+name = "terminal"
+version = "26.1.0"
+edition = "2021"
+description = "Terminal for TontooOS"
+readme = "README.md"
+
+[[bin]]
+name = "terminal"
+path = "src/main.rs"
+
+[dependencies]
+# TontooOS SDK: frameworks via features (on-device: /Library/System/sdk).
+sdk = { path = "../../TontooLibs/SDK", features = ["UIKit"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+once_cell = "1.19"
+gtk = { package = "gtk4", version = "0.9" }
+glib = "0.20"
+gdk4 = "0.9"
+pango = "0.20"
+vte4 = "0.8"
+libc = "0.2"
