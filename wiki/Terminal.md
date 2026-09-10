@@ -168,6 +168,11 @@ stay in the normal foreground.
 PROMPT='%F{2}%n@%m %~ %#%f '
 ```
 
+The format is enforced by our own `precmd` hook (`_tontoo_prompt`,
+registered after theme hooks so it runs last). Themes like grml or
+oh-my-zsh rebuild `PROMPT` inside their own hooks and would otherwise
+clobber the format; the hook also clears `RPROMPT`/`RPS1`.
+
 zsh reads rc files from `$ZDOTDIR`, so the app points it at a generated
 dir (`$XDG_RUNTIME_DIR/tontoo-terminal`, fallback
 `/tmp/tontoo-terminal-<uid>`). The generated `.zshenv` / `.zshrc`

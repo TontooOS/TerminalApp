@@ -88,6 +88,13 @@ mod tests {
   }
 
   #[test]
+  fn prompt_hook_enforces_format_after_themes() {
+    let content = include_str!("../Resources/tontoo-prompt.zsh");
+    assert!(content.contains("add-zsh-hook precmd _tontoo_prompt"));
+    assert!(content.contains("unset RPROMPT"));
+  }
+
+  #[test]
   fn prompt_file_reports_cwd_via_osc7() {
     let content = include_str!("../Resources/tontoo-prompt.zsh");
     assert!(content.contains("]7;"));
