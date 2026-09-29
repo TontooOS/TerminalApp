@@ -8,7 +8,7 @@ is transparent medium glass (alpha `0.85` plus `20px` blur). Default
 shell is `zsh`.
 
 - Repository: https://github.com/TontooOS/TontooOS
-- License: TCL v26.1
+- License: TCL v27.0
 - Version: 27.0.0
 
 ## Feature Index
