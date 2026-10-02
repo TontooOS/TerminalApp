@@ -1,35 +1,39 @@
-//! Terminal: macOS-style VTE terminal for TontooOS.
+//! Terminal for TontooOS, built with TontooUI.
 //!
-//! Mac decoration bar (`WindowType::Mac`) with a live title (OSC program
-//! title, else current path). Transparent background (`0.85` + `20px`
-//! blur), SF Mono font, full ANSI colors, audible + visual bell. Default
-//! shell is `zsh`.
+//! macOS style window: a `Titlebar` with traffic lights and a live
+//! title (the running program via OSC 0/1/2, otherwise the folder via
+//! OSC 7), and below it a terminal grid drawn straight into the Vello
+//! scene. The grid is driven by an own VT parser over a PTY, so the ISO
+//! needs no `vte4` package and the window has no background blur: the
+//! body is the flat TontooOS background token (`#1b2022` dark,
+//! `#ffffff` light). Default shell is `zsh`.
 
+mod app;
+mod clipboard;
 mod config;
+mod grid;
+mod input;
 mod lang;
+mod parser;
 mod prompt;
-mod terminal;
+mod pty;
+mod render;
+mod theme;
 
 sdk::preinclude!();
 
-use UIKit::prelude::*;
-
-struct TerminalDelegate;
-
-impl AppDelegate for TerminalDelegate {
-  fn view(&self) -> Box<dyn Widget> {
-    Box::new(terminal::TerminalRoot::new())
-  }
-}
+use TontooUI::renderer::window::run;
 
 fn main() {
   lang::init();
-  // 1170x600: 1.3x the base 900 width, same height.
-  let mut app = App::with_delegate(lang::t("app.title"), 1170, 600, TerminalDelegate);
-  app.set_window_type(WindowType::Mac);
-  // Medium glass: transparent background plus backdrop blur.
-  app.set_window_transparency(0.85);
-  app.set_window_blur(20.0);
-  app.auto_color_scheme();
-  app.run();
+  let app = app::TerminalApp::new();
+  if let Err(error) = run(
+    &lang::t("app.title"),
+    config::WINDOW_WIDTH,
+    config::WINDOW_HEIGHT,
+    app,
+  ) {
+    eprintln!("terminal: {error}");
+    std::process::exit(1);
+  }
 }

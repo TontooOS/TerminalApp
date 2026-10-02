@@ -1,17 +1,22 @@
-//! Minimal locale store for Terminal.
+//! Locale store for Terminal, backed by the TontooOS Accessibility
+//! framework.
 //!
-//! Loads `lang/en_us.json` or `lang/de_de.json` based on the system locale
-//! (`LANGUAGE`, `LC_ALL`, `LANG`, `/etc/locale.conf`). Falls back to English
-//! when no file matches. Only `en_us` and `de_de` are supported.
+//! Loads `lang/en_us.json` and `lang/de_de.json` from the app bundle
+//! (or the checkout when running from source), picks the language from
+//! the system locale (`LANGUAGE`, `LC_ALL`, `LANG`,
+//! `/etc/locale.conf`) and looks strings up through the global
+//! `LangStore`. A missing key returns the key itself, so a forgotten
+//! translation shows up as text instead of an empty label.
 
-use once_cell::sync::OnceCell;
-use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
-static STRINGS: OnceCell<HashMap<String, String>> = OnceCell::new();
-static LOCALE: OnceCell<String> = OnceCell::new();
+use crate::Accessibility::{LangFile, LangStore};
 
-/// Detect the system locale. Returns `de_de` for German, `en_us` otherwise.
+static LOCALE: OnceLock<String> = OnceLock::new();
+
+/// Detect the system locale. Returns `de_de` for German, `en_us`
+/// otherwise.
 pub fn detect_locale() -> String {
   for key in ["LANGUAGE", "LC_ALL", "LANG"] {
     if let Ok(value) = std::env::var(key) {
@@ -32,7 +37,8 @@ pub fn detect_locale() -> String {
   "en_us".to_string()
 }
 
-/// Candidate directories holding the `lang/` folder.
+/// Directories that may hold the `lang/` folder: the bundle
+/// (`Terminal.app/Resources/lang`), the checkout and the system share.
 fn lang_dirs() -> Vec<PathBuf> {
   let mut dirs = Vec::new();
   if let Ok(cwd) = std::env::current_dir() {
@@ -43,7 +49,6 @@ fn lang_dirs() -> Vec<PathBuf> {
       dirs.push(parent.join("lang"));
       if let Some(grand) = parent.parent() {
         dirs.push(grand.join("lang"));
-        // .app bundle layout: <Name>.app/{App/binary, Resources/lang}.
         dirs.push(grand.join("Resources").join("lang"));
       }
     }
@@ -52,45 +57,36 @@ fn lang_dirs() -> Vec<PathBuf> {
   dirs
 }
 
-fn load_map(locale: &str) -> HashMap<String, String> {
-  let file = format!("{locale}.json");
-  for dir in lang_dirs() {
-    let path = dir.join(&file);
-    if let Ok(content) = std::fs::read_to_string(&path) {
-      if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
-        return map;
+/// Load both languages into the global store. Safe to call repeatedly.
+pub fn init() {
+  let locale = detect_locale();
+  let mut files = Vec::new();
+  for code in ["en_us", "de_de"] {
+    let name = format!("{code}.json");
+    for dir in lang_dirs() {
+      let path = dir.join(&name);
+      if let Ok(file) = LangFile::from_file(&path) {
+        files.push(file);
+        break;
       }
     }
   }
-  HashMap::new()
-}
-
-/// Load strings for the detected locale. Safe to call multiple times.
-pub fn init() {
-  if STRINGS.get().is_some() {
+  // The fallback must be one of the loaded files, so an incomplete
+  // checkout still initialises with English.
+  if !files.iter().any(|file| file.lang == "en_us") {
     return;
   }
-  let locale = detect_locale();
-  let map = load_map(&locale);
+  let _ = LangStore::init(files, Some("en_us".to_string()));
   let _ = LOCALE.set(locale);
-  let _ = STRINGS.set(map);
 }
 
 /// Look up a localized string. Returns the key itself when missing.
 pub fn t(key: &str) -> String {
   init();
-  STRINGS
-    .get()
-    .and_then(|map| map.get(key))
-    .cloned()
+  let locale = LOCALE.get().map(String::as_str).unwrap_or("en_us");
+  LangStore::instance()
+    .t(locale, key, None)
     .unwrap_or_else(|| key.to_string())
-}
-
-/// Active locale code (`en_us` or `de_de`).
-#[allow(dead_code)]
-pub fn locale() -> String {
-  init();
-  LOCALE.get().cloned().unwrap_or_else(|| "en_us".to_string())
 }
 
 #[cfg(test)]
@@ -98,14 +94,20 @@ mod tests {
   use super::*;
 
   #[test]
-  fn detect_defaults_to_supported_locale() {
+  fn detect_defaults_to_a_supported_locale() {
     let locale = detect_locale();
     assert!(locale == "en_us" || locale == "de_de");
   }
 
   #[test]
-  fn missing_key_returns_key() {
-    let value = t("missing.key.that.does.not.exist");
-    assert_eq!(value, "missing.key.that.does.not.exist");
+  fn missing_key_returns_the_key() {
+    assert_eq!(t("missing.key.that.does.not.exist"), "missing.key.that.does.not.exist");
+  }
+
+  #[test]
+  fn known_keys_translate() {
+    init();
+    assert_eq!(t("app.title"), "Terminal");
+    assert!(!t("title.open_in_finder").is_empty());
   }
 }

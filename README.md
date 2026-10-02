@@ -1,6 +1,13 @@
 # Tontoo Terminal
 
-Terminal for TontooOS: macOS-style VTE terminal with live title (running program or current path), full ANSI colors, audible plus visual bell, transparent medium-glass background and `zsh` as the default shell.
+Terminal for TontooOS, built with TontooUI: a macOS-style window with a
+live title (running program or current path) on top of a terminal grid
+that is drawn straight into the Vello scene. The emulator is built in:
+VT100/xterm parsing, the alternate screen, mouse reporting, bracketed
+paste, 256 color and truecolor, DEC Special Graphics, scrollback with
+selection, copy and paste. There is no GTK and no `vte4` dependency, and
+no background blur: the window body is the flat TontooOS background
+token (`#1b2022` dark, `#ffffff` light). Default shell is `zsh`.
 
 ## Made for TontooOS
 

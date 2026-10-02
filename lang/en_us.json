@@ -1,7 +1,10 @@
 {
-  "app.title": "Terminal",
-  "app.name": "Terminal",
-  "terminal.untitled": "Terminal",
-  "terminal.shell_exited": "Shell exited, new shell started",
-  "title.open_in_finder": "Open in Finder"
+  "lang": "en_us",
+  "translations": {
+    "app.title": "Terminal",
+    "app.name": "Terminal",
+    "terminal.untitled": "Terminal",
+    "terminal.shell_exited": "Shell exited, window closed",
+    "title.open_in_finder": "Open in Finder"
+  }
 }

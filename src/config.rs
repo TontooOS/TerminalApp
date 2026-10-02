@@ -3,9 +3,36 @@
 //! The default shell is `zsh`. Override with `TONTOO_TERMINAL_SHELL` or
 //! `SHELL`. When the configured shell binary is missing, fall back to
 //! `/bin/bash` and finally `/bin/sh` so the window always opens.
+//!
+//! Colors follow the TontooOS tokens: background `#1b2022` with text
+//! `#d8d9d9` in dark mode, background `#ffffff` with text `#272727` in
+//! light mode. Program output keeps its own ANSI palette.
+
+/// Window size in logical px. The content viewport sits inside the
+/// window frame, so the terminal area is a little smaller.
+pub const WINDOW_WIDTH: u32 = 1170;
+pub const WINDOW_HEIGHT: u32 = 600;
 
 /// Default shell for TontooOS Terminal.
 pub const DEFAULT_SHELL: &str = "/bin/zsh";
+
+/// Environment variable overriding the font size in logical px.
+pub const FONT_SIZE_ENV: &str = "TONTOO_TERMINAL_FONT_SIZE";
+
+/// Terminal font size in logical px. The cell width is measured from
+/// the resolved font, so the grid always aligns.
+pub const FONT_SIZE: f32 = 13.0;
+
+/// Font family cascade for the grid: SF Mono when it is installed,
+/// then the system monospace face. `FontSystem` appends the system-ui
+/// fallback to every family stack.
+pub const FONT_FAMILY: &str = "SF Mono, monospace";
+
+/// Smallest font size accepted from `TONTOO_TERMINAL_FONT_SIZE`.
+const FONT_SIZE_MIN: f32 = 6.0;
+
+/// Largest font size accepted from `TONTOO_TERMINAL_FONT_SIZE`.
+const FONT_SIZE_MAX: f32 = 72.0;
 
 /// Resolve the shell binary to spawn.
 pub fn resolve_shell() -> String {
@@ -67,28 +94,40 @@ fn passwd_home() -> Option<String> {
   }
 }
 
-/// Terminal font. SF Mono is the TontooOS monospace face (SF family).
-/// 9pt fits roughly twice as many cells as 13pt.
-pub fn font_description() -> String {
-  "SF Mono 9, Adwaita Mono 9, Monospace 9".to_string()
+/// Font size for the grid, overridable with `TONTOO_TERMINAL_FONT_SIZE`.
+/// Values outside `FONT_SIZE_MIN..=FONT_SIZE_MAX` fall back to
+/// `FONT_SIZE`.
+pub fn font_size() -> f32 {
+  match std::env::var(FONT_SIZE_ENV) {
+    Ok(raw) => match raw.trim().parse::<f32>() {
+      Ok(size) if size >= FONT_SIZE_MIN && size <= FONT_SIZE_MAX => size,
+      _ => FONT_SIZE,
+    },
+    Err(_) => FONT_SIZE,
+  }
 }
 
-/// Scrollback lines kept in memory.
-pub const SCROLLBACK_LINES: i64 = 10_000;
-
-/// Audible bell (system beep) enabled by default.
-pub const AUDIBLE_BELL: bool = true;
+/// Scrollback lines kept in memory. The alternate screen never
+/// scrollbacks.
+pub const SCROLLBACK_LINES: usize = 10_000;
 
 /// Visual bell flash enabled by default.
 pub const VISUAL_BELL: bool = true;
 
-/// TontooOS background tokens (match AGENTS.md).
-pub const BG_DARK: &str = "#1d1d1d";
-pub const BG_LIGHT: &str = "#ececec";
-/// Foreground tokens. The prompt file paints `[user@machine folder]`
-/// green; typed text and output stay in the normal foreground.
-pub const FG_DARK: &str = "#F5F5F7";
-pub const FG_LIGHT: &str = "#1E1E1E";
+/// Visual bell flash duration in seconds.
+pub const VISUAL_BELL_SECONDS: f64 = 0.12;
+
+/// Cursor blink period in seconds, half period per toggle.
+pub const CURSOR_BLINK_SECONDS: f64 = 0.53;
+
+/// TontooOS background token, dark mode.
+pub const BG_DARK: &str = "#1b2022";
+/// TontooOS text token, dark mode.
+pub const FG_DARK: &str = "#d8d9d9";
+/// TontooOS background token, light mode.
+pub const BG_LIGHT: &str = "#ffffff";
+/// TontooOS text token, light mode.
+pub const FG_LIGHT: &str = "#272727";
 
 /// Classic 16-color ANSI palette (macOS-like, readable on both schemes).
 pub const PALETTE: [&str; 16] = [
@@ -125,7 +164,15 @@ mod tests {
   }
 
   #[test]
-  fn dark_foreground_is_plain_white() {
-    assert_eq!(FG_DARK, "#F5F5F7");
+  fn font_size_uses_default_without_env() {
+    assert_eq!(font_size(), FONT_SIZE);
+  }
+
+  #[test]
+  fn colors_are_the_tontooos_tokens() {
+    assert_eq!(BG_DARK, "#1b2022");
+    assert_eq!(FG_DARK, "#d8d9d9");
+    assert_eq!(BG_LIGHT, "#ffffff");
+    assert_eq!(FG_LIGHT, "#272727");
   }
 }

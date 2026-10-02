@@ -14,9 +14,9 @@ _tontoo_prompt
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _tontoo_prompt
 
-# Report the current folder to VTE (OSC 7) so the title bar and the
-# title-click-to-Finder always see the real CWD. Stock zsh never sends
-# this on its own, without it VTE keeps an empty directory uri.
+# Report the current folder to the terminal (OSC 7) so the title bar and
+# the title-click-to-Finder always see the real CWD. Stock zsh never sends
+# this on its own, without it the terminal keeps an empty directory uri.
 _tontoo_osc7_cwd() {
   local host="${HOST:-$(hostname)}"
   local dir="${PWD:gs/%/%25}"
