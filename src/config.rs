@@ -23,11 +23,6 @@ pub const FONT_SIZE_ENV: &str = "TONTOO_TERMINAL_FONT_SIZE";
 /// the resolved font, so the grid always aligns.
 pub const FONT_SIZE: f32 = 13.0;
 
-/// Font family cascade for the grid: SF Mono when it is installed,
-/// then the system monospace face. `FontSystem` appends the system-ui
-/// fallback to every family stack.
-pub const FONT_FAMILY: &str = "SF Mono, monospace";
-
 /// Smallest font size accepted from `TONTOO_TERMINAL_FONT_SIZE`.
 const FONT_SIZE_MIN: f32 = 6.0;
 
@@ -117,8 +112,9 @@ pub const VISUAL_BELL: bool = true;
 /// Visual bell flash duration in seconds.
 pub const VISUAL_BELL_SECONDS: f64 = 0.12;
 
-/// Cursor blink period in seconds, half period per toggle.
-pub const CURSOR_BLINK_SECONDS: f64 = 0.53;
+/// Blink period for text that asked for it with SGR 5 or 6. The cursor
+/// itself is static, so the grid never flickers on its own.
+pub const BLINK_SECONDS: f64 = 0.53;
 
 /// TontooOS background token, dark mode.
 pub const BG_DARK: &str = "#1b2022";

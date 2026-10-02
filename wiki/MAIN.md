@@ -41,6 +41,14 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-02: Grid alignment and cursor fix. Grid text is laid out with
+  the CoreText monospace generic family instead of a named family list:
+  a quoted list such as `SF Mono, monospace` resolves to one missing
+  family and fell back to the proportional system font, so the measured
+  cell width and the drawn advance disagreed and the cursor sat far
+  right of the line. The cursor no longer blinks (static block), only
+  SGR 5 and 6 text does.
+
 - 2026-10-02: Ported to TontooUI, 1:1 in behavior. Own VT parser and
   screen grid on Vello, no GTK and no `vte4` (the ISO no longer needs
   the `vte4` package), window without background blur. New: alternate

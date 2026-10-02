@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use crate::TontooUI::Color;
 use crate::TontooUI::kurbo::{Affine, Line, Point, Rect, Stroke};
 use crate::TontooUI::peniko::{Brush, Fill};
-use crate::TontooUI::renderer::text::{CTFrame, FontSystem, draw_layout};
+use crate::TontooUI::renderer::text::{CTFrame, FontSystem, RichSpan, draw_layout};
 use crate::TontooUI::Scene;
 
 use crate::config;
@@ -105,7 +105,6 @@ const MAX_CACHED_RUNS: usize = 4096;
 /// Screen renderer with a text layout cache.
 pub struct GridRenderer {
   font_size: f32,
-  family: String,
   cell_width: f32,
   row_height: f32,
   measured_scale: f32,
@@ -117,7 +116,6 @@ impl GridRenderer {
     let font_size = config::font_size();
     Self {
       font_size,
-      family: config::FONT_FAMILY.to_string(),
       cell_width: font_size * 0.6,
       row_height: font_size * 1.25,
       measured_scale: 0.0,
@@ -127,19 +125,17 @@ impl GridRenderer {
 
   /// Measure the resolved monospace face. Redone whenever the window
   /// scale changes, since CoreText builds layouts in physical px.
+  ///
+  /// The grid always asks for the monospace generic family, never for a
+  /// family by name: a name list like `"SF Mono", monospace` is parsed
+  /// as one family and silently falls back to the proportional system
+  /// font, which would break the column alignment.
   pub fn measure(&mut self, fonts: &mut FontSystem) {
     if self.measured_scale == fonts.scale && self.measured_scale > 0.0 {
       return;
     }
     let probe = "M".repeat(40);
-    let frame = fonts.layout_text_in_family(
-      &probe,
-      &self.family,
-      self.font_size,
-      Color::WHITE,
-      400.0,
-      None,
-    );
+    let frame = layout_mono(fonts, &probe, self.font_size, Color::WHITE, false);
     let (width, height) = frame.size();
     let advance = width / probe.chars().count() as f32;
     self.cell_width = advance.max(1.0);
@@ -427,14 +423,7 @@ impl GridRenderer {
     if self.layouts.contains_key(key) {
       return;
     }
-    let frame = fonts.layout_text_in_family(
-      &key.text,
-      &self.family,
-      self.font_size,
-      color,
-      if bold { 700.0 } else { 400.0 },
-      None,
-    );
+    let frame = layout_mono(fonts, &key.text, self.font_size, color, bold);
     self.layouts.insert(key.clone(), frame);
   }
 
@@ -479,9 +468,12 @@ impl GridRenderer {
       scale,
     );
     let fill = theme::cursor_fill(dark);
-    let painted = match screen.shape {
+    match screen.shape {
       CursorShape::Block => {
-        if focused && blink_on(time_secs) {
+        if focused {
+          // Static block: a blinking cursor flipped the glyph under it
+          // between the text color and the background color every
+          // cycle, which read as flickering text.
           scene.fill(
             Fill::NonZero,
             Affine::IDENTITY,
@@ -490,8 +482,7 @@ impl GridRenderer {
             &cell,
           );
           self.draw_cursor_glyph(scene, fonts, screen, area, dark, scale, time_secs);
-          true
-        } else if focused {
+        } else {
           scene.stroke(
             &Stroke::new((scale as f64).max(1.0)),
             Affine::IDENTITY,
@@ -499,9 +490,6 @@ impl GridRenderer {
             None,
             &cell,
           );
-          true
-        } else {
-          false
         }
       }
       CursorShape::Underline | CursorShape::Bar => {
@@ -527,10 +515,8 @@ impl GridRenderer {
           None,
           &bar,
         );
-        true
       }
-    };
-    let _ = painted;
+    }
   }
 
   /// Glyph under a filled block cursor, painted in the background
@@ -591,6 +577,29 @@ fn layout_key(text: &str, color: Color, bold: bool) -> LayoutKey {
   }
 }
 
+/// Lay out grid text in the monospace generic family.
+///
+/// CoreText pushes a quoted family stack per family name, so naming a
+/// list (`SF Mono, monospace`) resolves to a single missing family and
+/// falls back to the proportional system font. The generic monospace
+/// family always resolves to the real monospace face, which keeps every
+/// glyph on the same advance.
+fn layout_mono(
+  fonts: &mut FontSystem,
+  text: &str,
+  size: f32,
+  color: Color,
+  bold: bool,
+) -> CTFrame {
+  let span = RichSpan {
+    range: 0..text.len(),
+    monospace: true,
+    bold,
+    ..RichSpan::default()
+  };
+  fonts.layout_rich_text(text, size, color, None, &[span])
+}
+
 /// Logical rect to physical scene px.
 fn physical(x: f32, y: f32, width: f32, height: f32, scale: f32) -> Rect {
   let factor = scale as f64;
@@ -615,9 +624,9 @@ fn run_length(cells: &[Cell], column: u16, cols: u16) -> u16 {
   length.max(1)
 }
 
-/// Blink phase: on for the first half of each period.
+/// Blink phase for SGR 5 and 6 text: on for the first half of the period.
 fn blink_on(time_secs: f64) -> bool {
-  let phase = time_secs / config::CURSOR_BLINK_SECONDS;
+  let phase = time_secs / config::BLINK_SECONDS;
   (phase - phase.floor()) < 0.5
 }
 
@@ -708,8 +717,28 @@ mod tests {
   #[test]
   fn blink_phase_alternates() {
     assert!(blink_on(0.0));
-    assert!(!blink_on(config::CURSOR_BLINK_SECONDS * 0.75));
-    assert!(blink_on(config::CURSOR_BLINK_SECONDS * 1.1));
+    assert!(!blink_on(config::BLINK_SECONDS * 0.75));
+    assert!(blink_on(config::BLINK_SECONDS * 1.1));
+  }
+
+  #[test]
+  fn mono_layout_gives_every_glyph_the_same_advance() {
+    let mut fonts = FontSystem::new();
+    let sample = "MWiml.@#";
+    let (wide, _) = layout_mono(&mut fonts, sample, config::FONT_SIZE, Color::WHITE, false)
+      .size();
+    let (single, _) =
+      layout_mono(&mut fonts, "M", config::FONT_SIZE, Color::WHITE, false).size();
+    let per_char = wide / sample.chars().count() as f32;
+    assert!(
+      (per_char - single).abs() < 0.5,
+      "proportional font leaked in: {per_char} per char vs {single} for M"
+    );
+    assert!(
+      (per_char / config::FONT_SIZE - 0.6).abs() < 0.2,
+      "advance {per_char} is not a monospace width at {}",
+      config::FONT_SIZE
+    );
   }
 
   #[test]

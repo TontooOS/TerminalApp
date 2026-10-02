@@ -56,7 +56,15 @@ pub struct GridRenderer {
 
 - `measure` lays out 40 `M` glyphs once per window scale and derives
   `cell_width` from the advance, so the grid follows whatever monospace
-  face resolves (`config::FONT_FAMILY` = `SF Mono, monospace`).
+  face resolves.
+- Grid text is always laid out with CoreText's **monospace generic
+  family** (`layout_mono`, a `RichSpan` with `monospace`), never by
+  family name: CoreText pushes each named family as one quoted entry,
+  so a list like `"SF Mono", monospace` resolves to a single missing
+  family and silently falls back to the *proportional* system font. That
+  fallback keeps a uniform advance only by accident, so a "M" measured
+  the cell width while the text drew at its own advance and the cursor
+  drifted to the right of the line.
 - `grid_size(area)` returns `(cols, rows)`; the app resizes the screen
   and the PTY when it changes.
 - `draw` records one fill for the body, then for every visible row: one
@@ -70,6 +78,10 @@ pub struct GridRenderer {
 - The cursor follows `DECSCUSR`: a filled block that inverts the glyph,
   an underline bar or a bar cursor. An unfocused window draws an
   outline block instead of the fill.
+- The cursor is static, never blinking: a blinking block flipped the
+  glyph under it between the text and the background color every cycle,
+  which read as flickering text. Only SGR 5 and 6 text blinks
+  (`config::BLINK_SECONDS`), because a program asked for it.
 - `selection` is addressed by virtual line index and column, so it
   survives scrolling and new output.
 
