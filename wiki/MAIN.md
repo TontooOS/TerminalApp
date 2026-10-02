@@ -41,6 +41,16 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-02: Selection and clipboard fixes. The background fill now
+  splits a style run at the selection boundary, so a selection inside a
+  long run (a whole prompt line) is painted instead of silently
+  inheriting the unselected state of the run start. Copy and paste moved
+  into one `shortcut` resolver and are available on `Super+C`,
+  `Super+V`, `Ctrl+Shift+C`, `Ctrl+Shift+V`, `Ctrl+Insert` and
+  `Shift+Insert`; `Ctrl+C` and `Ctrl+V` stay `SIGINT` and "quote next".
+  New tests cover single character drag selection, backwards drags,
+  copy to the clipboard and the shortcut table.
+
 - 2026-10-02: Grid alignment and cursor fix. Grid text is laid out with
   the CoreText monospace generic family instead of a named family list:
   a quoted list such as `SF Mono, monospace` resolves to one missing

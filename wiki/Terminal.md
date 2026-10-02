@@ -84,6 +84,10 @@ pub struct GridRenderer {
   (`config::BLINK_SECONDS`), because a program asked for it.
 - `selection` is addressed by virtual line index and column, so it
   survives scrolling and new output.
+- The background fill splits a style run where the selection starts or
+  ends (`segment_end`). Without that split a selection inside a long
+  run, which is the normal case for a whole prompt line, inherited the
+  unselected state of the run start and was never painted.
 
 ## Colors
 
@@ -155,8 +159,16 @@ is buffered.
 
 - `App::raw_key` supplies every key with the full modifier state, so
   Ctrl chords, Tab and the function keys reach the shell unchanged.
-- `Ctrl+Shift+C` copies the selection, `Ctrl+Shift+V` pastes,
-  `Ctrl+Shift+A` selects everything. Plain `Ctrl+C` stays the interrupt.
+- Clipboard shortcuts resolve in `shortcut(press)`:
+
+  | Shortcut | Chords |
+  |---|---|
+  | Copy | `Super+C`, `Ctrl+Shift+C`, `Ctrl+Insert` |
+  | Paste | `Super+V`, `Ctrl+Shift+V`, `Shift+Insert` |
+  | Select all | `Super+A`, `Ctrl+Shift+A` |
+
+  `Ctrl+C` and `Ctrl+V` deliberately stay shell input (`SIGINT` and
+  "quote next"); stealing them would break every running program.
 - Middle click and right click paste; left drag selects, double click
   selects a word, triple click a line, Shift+click extends.
 - Shift with arrows, Home or End extends the selection instead of

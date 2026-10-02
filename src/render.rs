@@ -144,6 +144,12 @@ impl GridRenderer {
     self.layouts.clear();
   }
 
+  /// Cell size in logical px as `(width, height)`.
+  #[cfg(test)]
+  pub fn cell_size(&self) -> (f32, f32) {
+    (self.cell_width, self.row_height)
+  }
+
   /// Grid size that fits `area`.
   pub fn grid_size(&self, area: Area) -> (u16, u16) {
     let cols = (area.width / self.cell_width).floor().max(2.0) as u16;
@@ -256,18 +262,20 @@ impl GridRenderer {
       column = end;
     }
 
-    for &(from, to) in &runs {
+    for &(from, _to) in &runs {
       let attrs = cells[from as usize].attrs;
+      let end = from + segment_end(cells, from, cols, selection, line_index);
       let selected = selection
         .map(|selection| selection.contains(line_index, from))
         .unwrap_or(false);
-      self.fill_run(scene, attrs, dark, selected, row, area, from, to, scale);
+      self.fill_run(scene, attrs, dark, selected, row, area, from, end, scale);
     }
 
-    for &(from, to) in &runs {
+    for &(from, _run_end) in &runs {
       let attrs = cells[from as usize].attrs;
       let mut text = String::new();
-      for index in from..to {
+      let end = from + run_length(cells, from, cols);
+      for index in from..end {
         if let Some(cell) = cells.get(index as usize) {
           if cell.width != 0 {
             text.push(cell.ch);
@@ -283,7 +291,7 @@ impl GridRenderer {
         row,
         area,
         from,
-        to,
+        end,
         scale,
         time_secs,
       );
@@ -624,6 +632,33 @@ fn run_length(cells: &[Cell], column: u16, cols: u16) -> u16 {
   length.max(1)
 }
 
+/// Length of the background segment starting at `from`: a run ends
+/// early where the selection starts or ends, so a selection inside a
+/// long run (a whole prompt line) still gets its own fill.
+fn segment_end(
+  cells: &[Cell],
+  from: u16,
+  cols: u16,
+  selection: Option<Selection>,
+  line: usize,
+) -> u16 {
+  let length = run_length(cells, from, cols);
+  let Some(selection) = selection else {
+    return length;
+  };
+  let inside = selection.contains(line, from);
+  for offset in 1..=length {
+    let column = from + offset;
+    if column >= cols {
+      return column - from;
+    }
+    if selection.contains(line, column) != inside {
+      return offset;
+    }
+  }
+  length
+}
+
 /// Blink phase for SGR 5 and 6 text: on for the first half of the period.
 fn blink_on(time_secs: f64) -> bool {
   let phase = time_secs / config::BLINK_SECONDS;
@@ -712,6 +747,28 @@ mod tests {
     let line = screen.line(0).unwrap();
     assert_eq!(run_length(line.cells(), 0, 10), 3);
     assert_eq!(run_length(line.cells(), 3, 10), 3);
+  }
+
+  #[test]
+  fn selection_splits_a_long_run() {
+    let mut screen = Screen::new(20, 3);
+    let mut parser = crate::parser::Parser::new();
+    let mut reply = Vec::new();
+    parser.feed(b"hello world", &mut screen, &mut reply, 0.0);
+    let cells = screen.line(0).unwrap().cells();
+    // One uniform style fills the row, so a run reaches the last column.
+    assert_eq!(run_length(cells, 0, 20), 20);
+    assert_eq!(segment_end(cells, 0, 20, None, 0), 20);
+    // A selection inside the run must cut the segment, otherwise the
+    // selection never gets a fill.
+    let selection = Selection::new((0, 6), (0, 11));
+    assert_eq!(segment_end(cells, 0, 20, Some(selection), 0), 6);
+    assert_eq!(segment_end(cells, 6, 20, Some(selection), 0), 5);
+    assert_eq!(segment_end(cells, 11, 20, Some(selection), 0), 9);
+    // A selection starting at the run start covers all of it.
+    let all = Selection::new((0, 0), (0, 11));
+    assert_eq!(segment_end(cells, 0, 20, Some(all), 0), 11);
+    assert_eq!(segment_end(cells, 11, 20, Some(all), 0), 9);
   }
 
   #[test]

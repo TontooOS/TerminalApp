@@ -70,9 +70,10 @@ pub struct TerminalApp {
 }
 
 impl TerminalApp {
-  /// Build the app and start the shell.
-  pub fn new() -> Self {
-    let mut app = Self {
+  /// Build the app without a shell, for tests that only drive the grid
+  /// and the input path.
+  fn shellless() -> Self {
+    Self {
       bar: Titlebar::new(lang::t("app.title")).height(TitlebarHeight::Mac),
       renderer: GridRenderer::new(),
       screen: Screen::new(BOOT_COLS, BOOT_ROWS),
@@ -104,7 +105,12 @@ impl TerminalApp {
       title_scale: 0.0,
       now: 0.0,
       shell_stopped: false,
-    };
+    }
+  }
+
+  /// Build the app and start the shell.
+  pub fn new() -> Self {
+    let mut app = Self::shellless();
     app.start_shell();
     app
   }
@@ -419,6 +425,22 @@ fn open_in_finder(path: &str) {
   let _ = std::process::Command::new("xdg-open").arg(path).spawn();
 }
 
+impl TerminalApp {
+  /// Measure the font, place the grid and match the PTY to it. Split
+  /// out of `draw` so the input path works on the same layout in tests.
+  fn sync_layout(&mut self, fonts: &mut FontSystem, viewport: Viewport) {
+    self.renderer.measure(fonts);
+    let bar_height = self.bar.bounds().3;
+    self.area = Area {
+      x: viewport.x,
+      y: viewport.y + bar_height,
+      width: viewport.width,
+      height: (viewport.height - bar_height).max(0.0),
+    };
+    self.sync_grid();
+  }
+}
+
 impl TontooApp for TerminalApp {
   fn draw(
     &mut self,
@@ -437,15 +459,7 @@ impl TontooApp for TerminalApp {
     self.dark = dark;
     self.screen.background_is_light = !dark;
 
-    self.renderer.measure(fonts);
-    let bar_height = self.bar.bounds().3;
-    self.area = Area {
-      x: viewport.x,
-      y: viewport.y + bar_height,
-      width: viewport.width,
-      height: (viewport.height - bar_height).max(0.0),
-    };
-    self.sync_grid();
+    self.sync_layout(fonts, viewport);
     self.sync_title();
 
     self.bar.set_palette(palette.titlebar_bg, palette.titlebar_text, palette.divider);
@@ -660,29 +674,27 @@ impl TontooApp for TerminalApp {
     self.report_focus(focused);
   }
 
-  fn raw_key(&mut self, press: &KeyPress) {
+fn raw_key(&mut self, press: &KeyPress) {
     if !press.pressed {
       return;
     }
     let modes = self.screen.modes;
 
-    if press.modifiers.ctrl && press.modifiers.shift {
-      match press.key {
-        RawKey::Character(ch) if ch.eq_ignore_ascii_case(&'c') => {
-          self.copy_selection();
-          return;
-        }
-        RawKey::Character(ch) if ch.eq_ignore_ascii_case(&'v') => {
-          self.paste();
-          return;
-        }
-        RawKey::Character(ch) if ch.eq_ignore_ascii_case(&'a') => {
-          let last = self.screen.total_lines().saturating_sub(1);
-          self.selection = Some(Selection::new((0, 0), (last, self.screen.cols)));
-          return;
-        }
-        _ => {}
-      }
+    // Clipboard chords. Ctrl+C and Ctrl+V stay shell input (SIGINT and
+    // "quote next"), so copy and paste are on Super (Command) and the
+    // Ctrl+Shift pair a shell never uses, plus the X11 Insert pair.
+    if let Some(Shortcut::Copy) = shortcut(press) {
+      self.copy_selection();
+      return;
+    }
+    if let Some(Shortcut::Paste) = shortcut(press) {
+      self.paste();
+      return;
+    }
+    if let Some(Shortcut::SelectAll) = shortcut(press) {
+      let last = self.screen.total_lines().saturating_sub(1);
+      self.selection = Some(Selection::new((0, 0), (last, self.screen.cols)));
+      return;
     }
 
     if press.modifiers.shift && !press.modifiers.ctrl {
@@ -724,6 +736,47 @@ impl TontooApp for TerminalApp {
   }
 }
 
+/// Clipboard and selection shortcuts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shortcut {
+  Copy,
+  Paste,
+  SelectAll,
+}
+
+/// Resolve one key press to a shortcut, or `None` when it is normal
+/// shell input.
+///
+/// | Shortcut | Chords |
+/// |---|---|
+/// | `Copy` | `Super+C`, `Ctrl+Shift+C`, `Ctrl+Insert` |
+/// | `Paste` | `Super+V`, `Ctrl+Shift+V`, `Shift+Insert` |
+/// | `SelectAll` | `Super+A`, `Ctrl+Shift+A` |
+///
+/// `Ctrl+C` and `Ctrl+V` are deliberately absent: in a terminal they
+/// are SIGINT and "quote next", and stealing them would break every
+/// running program.
+fn shortcut(press: &KeyPress) -> Option<Shortcut> {
+  let modifiers = press.modifiers;
+  let super_chord = modifiers.super_key && !modifiers.ctrl && !modifiers.shift;
+  let ctrl_shift = modifiers.ctrl && modifiers.shift && !modifiers.super_key;
+  match press.key {
+    RawKey::Character(ch) => match ch.to_ascii_lowercase() {
+      'c' if super_chord || ctrl_shift => Some(Shortcut::Copy),
+      'v' if super_chord || ctrl_shift => Some(Shortcut::Paste),
+      'a' if super_chord || ctrl_shift => Some(Shortcut::SelectAll),
+      _ => None,
+    },
+    RawKey::Insert if modifiers.ctrl && !modifiers.shift && !modifiers.super_key => {
+      Some(Shortcut::Copy)
+    }
+    RawKey::Insert if modifiers.shift && !modifiers.ctrl && !modifiers.super_key => {
+      Some(Shortcut::Paste)
+    }
+    _ => None,
+  }
+}
+
 /// Move the selection head for Shift+arrows, Home and End. Returns the
 /// new head or `None` when the key is not a selection key.
 fn shift_selection(screen: &Screen, key: RawKey) -> Option<(usize, u16)> {
@@ -758,6 +811,173 @@ fn step_selection(screen: &Screen, current: (usize, u16), target: (usize, u16)) 
 mod tests {
   use super::*;
   use crate::grid::Modes;
+
+  /// An app with a laid out grid and `text` on the first line, without
+  /// a shell behind it.
+  fn app_with(text: &str) -> (TerminalApp, f32, f32) {
+    let mut app = TerminalApp::shellless();
+    let mut fonts = FontSystem::new();
+    app.sync_layout(
+      &mut fonts,
+      Viewport {
+        x: 0.0,
+        y: 0.0,
+        width: 800.0,
+        height: 600.0,
+      },
+    );
+    for ch in text.chars() {
+      app.screen.print(ch);
+    }
+    let (width, height) = app.renderer.cell_size();
+    (app, width, height)
+  }
+
+  /// Left press at `column`, drag to `end_column`, release.
+  fn drag_over(app: &mut TerminalApp, width: f32, height: f32, column: usize, end_column: usize) {
+    let y = (app.area.y + height / 2.0) as f64;
+    let x = (app.area.x + column as f32 * width + width / 2.0) as f64;
+    let end = (app.area.x + end_column as f32 * width + width / 2.0) as f64;
+    app.mouse_button(
+      MouseButtonKind::Left,
+      true,
+      x,
+      y,
+      Modifiers::default(),
+    );
+    app.mouse_move(end, y);
+    app.mouse_button(
+      MouseButtonKind::Left,
+      false,
+      end,
+      y,
+      Modifiers::default(),
+    );
+    app.mouse_up(end, y);
+  }
+
+  #[test]
+  fn drag_selects_characters() {
+    let (mut app, width, height) = app_with("hello world");
+    drag_over(&mut app, width, height, 0, 5);
+    let selection = app.selection.expect("drag leaves a selection");
+    assert_eq!(selection.text(&app.screen), "hello");
+  }
+
+  #[test]
+  fn a_single_character_can_be_selected() {
+    let (mut app, width, height) = app_with("hello");
+    drag_over(&mut app, width, height, 1, 2);
+    let selection = app.selection.expect("one character is a selection");
+    assert_eq!(selection.text(&app.screen), "e");
+  }
+
+  #[test]
+  fn dragging_backwards_selects_too() {
+    let (mut app, width, height) = app_with("hello");
+    drag_over(&mut app, width, height, 4, 1);
+    let selection = app.selection.expect("backwards drag");
+    assert_eq!(selection.text(&app.screen), "ell");
+  }
+
+  #[test]
+  fn a_click_without_a_drag_selects_nothing() {
+    let (mut app, width, height) = app_with("hello");
+    drag_over(&mut app, width, height, 2, 2);
+    assert!(app.selection.is_none());
+  }
+
+  #[test]
+  fn copy_reaches_the_clipboard() {
+    let (mut app, width, height) = app_with("copy me");
+    drag_over(&mut app, width, height, 0, 4);
+    app.copy_selection();
+    assert_eq!(crate::clipboard::get().as_deref(), Some("copy"));
+  }
+
+  fn press(key: RawKey, modifiers: Modifiers) -> KeyPress {
+    KeyPress {
+      key,
+      modifiers,
+      text: None,
+      pressed: true,
+      repeat: false,
+    }
+  }
+
+  #[test]
+  fn clipboard_shortcuts_cover_the_usual_chords() {
+    let super_only = Modifiers {
+      super_key: true,
+      ..Modifiers::default()
+    };
+    let ctrl_shift = Modifiers {
+      ctrl: true,
+      shift: true,
+      ..Modifiers::default()
+    };
+    let shift = Modifiers {
+      shift: true,
+      ..Modifiers::default()
+    };
+    let ctrl = Modifiers {
+      ctrl: true,
+      ..Modifiers::default()
+    };
+    assert_eq!(
+      shortcut(&press(RawKey::Character('c'), super_only)),
+      Some(Shortcut::Copy)
+    );
+    assert_eq!(
+      shortcut(&press(RawKey::Character('C'), ctrl_shift)),
+      Some(Shortcut::Copy)
+    );
+    assert_eq!(
+      shortcut(&press(RawKey::Insert, ctrl)),
+      Some(Shortcut::Copy)
+    );
+    assert_eq!(
+      shortcut(&press(RawKey::Character('v'), super_only)),
+      Some(Shortcut::Paste)
+    );
+    assert_eq!(
+      shortcut(&press(RawKey::Insert, shift)),
+      Some(Shortcut::Paste)
+    );
+    assert_eq!(
+      shortcut(&press(RawKey::Character('a'), super_only)),
+      Some(Shortcut::SelectAll)
+    );
+  }
+
+  #[test]
+  fn ctrl_c_and_ctrl_v_stay_shell_input() {
+    let ctrl = Modifiers {
+      ctrl: true,
+      ..Modifiers::default()
+    };
+    assert_eq!(shortcut(&press(RawKey::Character('c'), ctrl)), None);
+    assert_eq!(shortcut(&press(RawKey::Character('v'), ctrl)), None);
+    let modes = Modes::default();
+    let bytes = input::encode_key(
+      &KeyInput {
+        key: RawKey::Character('c'),
+        modifiers: ctrl,
+        text: Some("c".to_string()),
+      },
+      &modes,
+    );
+    assert_eq!(bytes, vec![0x03], "Ctrl+C still sends the interrupt");
+    assert_eq!(super_only_key().0, false);
+  }
+
+  fn super_only_key() -> (bool, bool) {
+    let super_only = Modifiers {
+      super_key: true,
+      ..Modifiers::default()
+    };
+    (super_only.ctrl, super_only.shift)
+  }
 
   #[test]
   fn cwd_path_strips_the_uri_scheme() {
