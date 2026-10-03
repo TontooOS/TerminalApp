@@ -261,15 +261,15 @@ impl GridRenderer {
       column = end;
     }
 
-    for &(from, _to) in &runs {
+    // Backgrounds: walk the row cell by cell so every segment of a
+    // style run gets its own fill. Iterating the style runs instead
+    // would paint only the first segment of each run, which dropped
+    // every selection that started inside a run, a prompt line being
+    // the normal case.
+    for (from, to, selected) in background_segments(cells, cols, selection, line_index) {
       let attrs = cells[from as usize].attrs;
-      let end = from + segment_end(cells, from, cols, selection, line_index);
-      let selected = selection
-        .map(|selection| selection.contains(line_index, from))
-        .unwrap_or(false);
-      self.fill_run(scene, attrs, dark, selected, row, area, from, end, scale);
+      self.fill_run(scene, attrs, dark, selected, row, area, from, to, scale);
     }
-
     for &(from, _run_end) in &runs {
       let attrs = cells[from as usize].attrs;
       let mut text = String::new();
@@ -658,6 +658,35 @@ fn segment_end(
   length
 }
 
+/// Every background segment of a row as `(from, to, selected)`, tiling
+/// the row without gaps. The renderer walks this instead of the style
+/// runs so a selection in the middle of a run still gets filled.
+fn background_segments(
+  cells: &[Cell],
+  cols: u16,
+  selection: Option<Selection>,
+  line: usize,
+) -> Vec<(u16, u16, bool)> {
+  let mut segments = Vec::new();
+  let mut column = 0u16;
+  while column < cols {
+    let Some(cell) = cells.get(column as usize) else {
+      break;
+    };
+    if cell.width == 0 {
+      column += 1;
+      continue;
+    }
+    let selected = selection
+      .map(|selection| selection.contains(line, column))
+      .unwrap_or(false);
+    let end = column + segment_end(cells, column, cols, selection, line);
+    segments.push((column, end, selected));
+    column = end;
+  }
+  segments
+}
+
 /// Blink phase for SGR 5 and 6 text: on for the first half of the period.
 fn blink_on(time_secs: f64) -> bool {
   let phase = time_secs / config::BLINK_SECONDS;
@@ -768,6 +797,53 @@ mod tests {
     let all = Selection::new((0, 0), (0, 11));
     assert_eq!(segment_end(cells, 0, 20, Some(all), 0), 11);
     assert_eq!(segment_end(cells, 11, 20, Some(all), 0), 9);
+  }
+
+  #[test]
+  fn background_segments_tile_the_whole_row() {
+    let mut screen = Screen::new(20, 3);
+    let mut parser = crate::parser::Parser::new();
+    let mut reply = Vec::new();
+    parser.feed(b"hello world", &mut screen, &mut reply, 0.0);
+    let cells = screen.line(0).unwrap().cells();
+    let selection = Selection::new((0, 6), (0, 11));
+    let segments = background_segments(cells, 20, Some(selection), 0);
+    // No gaps, and the selected columns are all covered by a selected
+    // segment.
+    let mut column = 0u16;
+    let mut selected_columns = Vec::new();
+    for (from, to, selected) in &segments {
+      assert_eq!(*from, column, "gap or overlap before {from}");
+      if *selected {
+        selected_columns.extend(*from..*to);
+      }
+      column = *to;
+    }
+    assert_eq!(column, 20);
+    assert_eq!(selected_columns, (6..11).collect::<Vec<u16>>());
+    assert_eq!(segments.len(), 3);
+  }
+
+  #[test]
+  fn background_segments_cover_a_trailing_selection() {
+    let mut screen = Screen::new(12, 2);
+    let mut parser = crate::parser::Parser::new();
+    let mut reply = Vec::new();
+    parser.feed(b"abc\x1b[31mdef\x1b[0mgh", &mut screen, &mut reply, 0.0);
+    let cells = screen.line(0).unwrap().cells();
+    let selection = Selection::new((0, 7), (0, 12));
+    let segments = background_segments(cells, 12, Some(selection), 0);
+    let mut column = 0u16;
+    let mut selected_columns = Vec::new();
+    for (from, to, selected) in &segments {
+      assert_eq!(*from, column);
+      if *selected {
+        selected_columns.extend(*from..*to);
+      }
+      column = *to;
+    }
+    assert_eq!(column, 12);
+    assert_eq!(selected_columns, (7..12).collect::<Vec<u16>>());
   }
 
   #[test]

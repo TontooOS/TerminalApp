@@ -84,10 +84,12 @@ pub struct GridRenderer {
   (`config::BLINK_SECONDS`), because a program asked for it.
 - `selection` is addressed by virtual line index and column, so it
   survives scrolling and new output.
-- The background fill splits a style run where the selection starts or
-  ends (`segment_end`). Without that split a selection inside a long
-  run, which is the normal case for a whole prompt line, inherited the
-  unselected state of the run start and was never painted.
+- The background fill walks the row column by column
+  (`background_segments`) instead of iterating the style runs, and
+  `segment_end` cuts a segment where the selection starts or ends.
+  Iterating the runs painted only the first segment of each run, so a
+  selection in the middle of a run, which is the normal case for a
+  whole prompt line, was never filled.
 
 ## Colors
 
@@ -172,8 +174,17 @@ is buffered.
   never taken, because the shell reads it as "start of line". The plain
   Ctrl chords are deliberate: some Wayland setups never deliver the shift
   modifier, so copy and paste must not depend on it.
-- Middle click and right click paste; left drag selects, double click
-  selects a word, triple click a line, Shift+click extends.
+- Middle click pastes; left drag selects, double click selects a word,
+  triple click a line, Shift+click extends.
+- Right click opens a glass menu with `Copy`, `Paste` and `Select All`.
+  The menu is a TontooUI `Menu` anchored at the pointer: `context_click`
+  opens it, `mouse_down`, `mouse_move` and `mouse_up` are forwarded to
+  it while it is open so a press on a row never reaches the grid, and
+  `wants_backdrop` keeps the blur pass on for the panel. The row that ran
+  is consumed in `draw` (`run_menu_action`). The menu only opens over the
+  grid, not on the title bar. `Select All` stops at the last line with
+  content, so a fresh shell selects its text instead of every empty row
+  below it.
 - Shift with arrows, Home or End extends the selection instead of
   sending the key.
 - Mouse reports follow xterm: SGR (`1006`) when enabled, X10 otherwise.

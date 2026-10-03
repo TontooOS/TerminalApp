@@ -41,6 +41,14 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-03: Right click menu and the real selection paint bug. The
+  background fill iterated the style runs and filled only the first
+  segment of each one, so every selection that started inside a run was
+  never painted; it now walks the row with `background_segments` and a
+  selection in a long prompt line shows. Right click opens a glass
+  `Copy`, `Paste`, `Select All` menu over the grid instead of pasting,
+  the pointer goes to the menu while it is open, and `Select All` stops
+  at the last line with content.
 - 2026-10-03: Copy and paste on the plain Ctrl chords. A trace run
   (`TONTOO_TERMINAL_DEBUG=1`) showed the shell never reports the shift
   modifier on this system, so `Ctrl+Shift+V` was unreachable and plain

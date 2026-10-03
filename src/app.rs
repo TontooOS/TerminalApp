@@ -7,7 +7,7 @@
 //! is the flat TontooOS background token.
 
 use crate::TontooUI::Color;
-use crate::TontooUI::elements::{Titlebar, TitlebarHeight, TrafficAction};
+use crate::TontooUI::elements::{Menu, Titlebar, TitlebarHeight, TrafficAction, View};
 use crate::TontooUI::kurbo::{self, Affine, Rect as KurboRect};
 use crate::TontooUI::peniko::{Brush, Fill};
 use crate::TontooUI::renderer::window::{
@@ -68,6 +68,10 @@ pub struct TerminalApp {
   now: f64,
   shell_stopped: bool,
   traced_layout: bool,
+  /// Right-click menu with Copy, Paste and Select All.
+  menu: Menu,
+  /// Row the menu activated last, consumed once.
+  menu_action: Option<usize>,
 }
 
 impl TerminalApp {
@@ -107,6 +111,8 @@ impl TerminalApp {
       now: 0.0,
       shell_stopped: false,
       traced_layout: false,
+      menu: Menu::from_slice("Terminal", &["Copy", "Paste", "Select All"]),
+      menu_action: None,
     }
   }
 
@@ -438,6 +444,11 @@ fn hex_value(byte: u8) -> Option<u8> {
   }
 }
 
+/// Rows of the right-click menu.
+const MENU_COPY: usize = 0;
+const MENU_PASTE: usize = 1;
+const MENU_SELECT_ALL: usize = 2;
+
 /// Open a folder in the file manager (native Finder first).
 fn open_in_finder(path: &str) {
   if std::process::Command::new("finder").arg(path).spawn().is_ok() {
@@ -459,6 +470,58 @@ impl TerminalApp {
       height: (viewport.height - bar_height).max(0.0),
     };
     self.sync_grid();
+  }
+  /// Select the whole screen, stopping at the last line that has
+  /// content so a fresh shell selects its text instead of every empty
+  /// row below it.
+  fn select_all(&mut self) {
+    let mut last = 0usize;
+    for index in 0..self.screen.total_lines() {
+      let used = self
+        .screen
+        .line(index)
+        .map(|line| line.cells().iter().any(|cell| cell.ch != ' '))
+        .unwrap_or(false);
+      if used {
+        last = index;
+      }
+    }
+    self.selection = Some(Selection::new((0, 0), (last, self.screen.cols)));
+  }
+
+  /// Run the row the right-click menu activated, once.
+  fn run_menu_action(&mut self) {
+    let Some(row) = self.menu_action.take() else {
+      return;
+    };
+    self.menu.close();
+    match row {
+      MENU_COPY => self.copy_selection(),
+      MENU_PASTE => self.paste(),
+      MENU_SELECT_ALL => self.select_all(),
+      _ => {}
+    }
+  }
+
+  /// True while the right-click menu is open and swallows pointer input.
+  fn menu_open(&self) -> bool {
+    self.menu.is_open()
+  }
+
+  /// Open the right-click menu at the pointer, but only over the grid.
+  fn open_menu(&mut self, x: f64, y: f64) {
+    let (x, y) = (x as f32, y as f32);
+    let inside = x >= self.area.x
+      && x <= self.area.x + self.area.width
+      && y >= self.area.y
+      && y <= self.area.y + self.area.height;
+    if !inside {
+      self.menu.close();
+      return;
+    }
+    self.menu.set_anchor(Some((x, y)));
+    self.menu.open();
+    trace!("menu open at ({x:.1},{y:.1}): {}", self.menu.is_open());
   }
 }
 
@@ -507,6 +570,14 @@ impl TontooApp for TerminalApp {
     self.bar.set_rect(viewport.x, viewport.y, viewport.width);
     self.bar.set_focused(self.focused);
     self.bar.draw(scene, fonts);
+
+    let theme = self.watcher.theme();
+    self.menu
+      .set_viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+    self.menu.set_theme(palette.accent, dark);
+    self.menu.set_glass(theme.mode, theme.glass);
+    self.menu.set_focused(self.focused);
+    self.run_menu_action();
     self.measure_title_rect(fonts);
 
     self.renderer.draw(
@@ -540,6 +611,11 @@ impl TontooApp for TerminalApp {
         self.bell_flash = None;
       }
     }
+
+    // Menu overlay last so the panel floats above the grid.
+    self.menu
+      .place(fonts, viewport.x, viewport.y, viewport.width, viewport.height);
+    self.menu.draw(scene, fonts, _images);
   }
 
   fn background(&self) -> Color {
@@ -561,7 +637,11 @@ impl TontooApp for TerminalApp {
     Some((x, y, right.min(width), height))
   }
 
-  fn mouse_down(&mut self, x: f64, y: f64) {
+fn mouse_down(&mut self, x: f64, y: f64) {
+    if self.menu_open() {
+      self.menu.mouse_down(x, y);
+      return;
+    }
     if let Some(action) = self.bar.press(x as f32, y as f32) {
       self.command = Some(match action {
         TrafficAction::Close => WindowCommand::Close,
@@ -571,9 +651,17 @@ impl TontooApp for TerminalApp {
     }
   }
 
-fn mouse_move(&mut self, x: f64, y: f64) {
+  fn context_click(&mut self, x: f64, y: f64) {
+    self.open_menu(x, y);
+  }
+
+  fn mouse_move(&mut self, x: f64, y: f64) {
     self.pointer = (x, y);
     self.bar.set_hover(x as f32, y as f32);
+    if self.menu_open() {
+      self.menu.mouse_move(x, y);
+      return;
+    }
     if self.drag_anchor.is_none() {
       return;
     }
@@ -599,15 +687,20 @@ fn mouse_move(&mut self, x: f64, y: f64) {
     }
   }
 
-  fn mouse_up(&mut self, _x: f64, _y: f64) {
+fn mouse_up(&mut self, x: f64, y: f64) {
+    if self.menu_open() {
+      self.menu.mouse_up(x, y);
+      self.menu_action = self.menu.last_action();
+      return;
+    }
     self.drag_anchor = None;
   }
 
-  fn mouse_wheel(&mut self, _dx: f64, dy: f64) {
-    let notches = (dy / 20.0).round() as i32;
-    if notches == 0 {
-      return;
-    }
+fn mouse_wheel(&mut self, _dx: f64, dy: f64) {
+      let notches = (dy / 20.0).round() as i32;
+      if notches == 0 {
+        return;
+      }
     let direction = if dy < 0.0 {
       Wheel::Up
     } else {
@@ -695,8 +788,19 @@ fn mouse_button(
       return;
     }
 
+    if self.menu_open() {
+      // The menu takes the press; its rows run in draw.
+      self.menu.mouse_down(x, y);
+      self.menu.mouse_up(x, y);
+      self.menu_action = self.menu.last_action();
+      return;
+    }
+
     match button {
-      MouseButtonKind::Middle | MouseButtonKind::Right => self.paste(),
+      MouseButtonKind::Middle => self.paste(),
+      // Right click opens the menu through `context_click`, which the
+      // shell also calls; nothing to do here.
+      MouseButtonKind::Right | MouseButtonKind::Other(_) => {}
       MouseButtonKind::Left => {
         self.press_modifiers = modifiers;
         let time = self.now;
@@ -730,7 +834,6 @@ fn mouse_button(
         }
         self.report_mouse(PointerAction::Press, number, x, y, modifiers, None);
       }
-      MouseButtonKind::Other(_) => {}
     }
     if crate::debug::enabled() {
       let selection = self.selection.map(|selection| selection.text(&self.screen));
@@ -820,8 +923,13 @@ fn raw_key(&mut self, press: &KeyPress) {
     }
   }
 
-  fn poll_window_command(&mut self) -> Option<WindowCommand> {
+fn poll_window_command(&mut self) -> Option<WindowCommand> {
     self.command.take()
+  }
+
+  fn wants_backdrop(&self) -> bool {
+    // The menu panel is glass, so it needs the blur pass while open.
+    self.menu.is_open()
   }
 }
 
@@ -997,6 +1105,79 @@ mod tests {
       pressed: true,
       repeat: false,
     }
+  }
+
+  #[test]
+  fn right_click_opens_the_menu_over_the_grid() {
+    let (mut app, width, height) = app_with("hello");
+    let mut fonts = FontSystem::new();
+    let x = (app.area.x + width / 2.0) as f64;
+    let y = (app.area.y + height / 2.0) as f64;
+    app.context_click(x, y);
+    assert!(app.menu.is_open());
+    app.menu.place(&mut fonts, 0.0, 0.0, 800.0, 600.0);
+    assert!(app.menu.row_rect(MENU_COPY).is_some());
+    assert!(app.menu.row_rect(MENU_PASTE).is_some());
+    assert!(app.menu.row_rect(MENU_SELECT_ALL).is_some());
+    assert!(app.menu.row_rect(3).is_none());
+  }
+
+  #[test]
+  fn right_click_in_the_titlebar_does_not_open_the_menu() {
+    let (mut app, _width, _height) = app_with("hello");
+    app.context_click(200.0, 1.0);
+    assert!(!app.menu.is_open());
+  }
+
+  /// Open the menu at `point`, click `row` and run its action.
+  fn click_menu_row(app: &mut TerminalApp, point: (f64, f64), row: usize) {
+    let mut fonts = FontSystem::new();
+    app.context_click(point.0, point.1);
+    assert!(app.menu.is_open(), "right click opens the menu");
+    app.menu.place(&mut fonts, 0.0, 0.0, 800.0, 600.0);
+    let (x, y, w, h) = app.menu.row_rect(row).expect("menu row exists");
+    let (cx, cy) = ((x + w / 2.0) as f64, (y + h / 2.0) as f64);
+    app.mouse_down(cx, cy);
+    app.mouse_up(cx, cy);
+    app.run_menu_action();
+  }
+
+  #[test]
+  fn the_menu_copy_row_copies_the_selection() {
+    let (mut app, width, height) = app_with("copy me");
+    drag_over(&mut app, width, height, 0, 4);
+    let y = (app.area.y + height / 2.0) as f64;
+    let x = (app.area.x + width / 2.0) as f64;
+    click_menu_row(&mut app, (x, y), MENU_COPY);
+    assert_eq!(crate::clipboard::get().as_deref(), Some("copy"));
+    assert!(!app.menu.is_open(), "the menu closes after a row runs");
+  }
+
+  #[test]
+  fn the_menu_select_all_row_selects_every_line() {
+    let (mut app, width, height) = app_with("hello");
+    let y = (app.area.y + height / 2.0) as f64;
+    let x = (app.area.x + width / 2.0) as f64;
+    click_menu_row(&mut app, (x, y), MENU_SELECT_ALL);
+    let selection = app.selection.expect("select all leaves a selection");
+    assert_eq!(selection.text(&app.screen), "hello");
+  }
+
+  #[test]
+  fn clicks_go_to_the_menu_while_it_is_open() {
+    let (mut app, width, height) = app_with("hello");
+    let mut fonts = FontSystem::new();
+    let x = (app.area.x + width / 2.0) as f64;
+    let y = (app.area.y + height / 2.0) as f64;
+    app.context_click(x, y);
+    app.menu.place(&mut fonts, 0.0, 0.0, 800.0, 600.0);
+    let (rx, ry, rw, rh) = app.menu.row_rect(MENU_COPY).expect("row");
+    let (cx, cy) = ((rx + rw / 2.0) as f64, (ry + rh / 2.0) as f64);
+    // The press must not reach the grid, so no drag selection starts.
+    app.mouse_down(cx, cy);
+    app.mouse_move(cx, cy);
+    app.mouse_up(cx, cy);
+    assert!(app.selection.is_none(), "menu press is not a text press");
   }
 
   #[test]
