@@ -145,7 +145,6 @@ impl GridRenderer {
   }
 
   /// Cell size in logical px as `(width, height)`.
-  #[cfg(test)]
   pub fn cell_size(&self) -> (f32, f32) {
     (self.cell_width, self.row_height)
   }

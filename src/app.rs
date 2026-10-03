@@ -190,10 +190,13 @@ impl TerminalApp {
     }
   }
 
-  /// Send input to the shell.
+/// Send input to the shell.
   fn write(&mut self, bytes: &[u8]) {
     if self.shell_stopped {
       return;
+    }
+    if crate::debug::enabled() {
+      trace!("pty write {} bytes: {}", bytes.len(), crate::debug::bytes(bytes));
     }
     if let Some(pty) = self.pty.as_mut() {
       if !pty.write(bytes) {
@@ -288,15 +291,24 @@ fn clamp_selection(&mut self) {
     (line - self.screen.view_top()) as u16
   }
 
-  /// Copy the selection to the clipboard.
+/// Copy the selection to the clipboard.
   fn copy_selection(&mut self) {
     let Some(selection) = self.selection else {
+      trace!("copy: no selection");
       return;
     };
     let text = selection.text(&self.screen);
-    if !text.is_empty() {
-      crate::clipboard::set(&text);
+    if text.is_empty() {
+      trace!("copy: selection is empty");
+      return;
     }
+    let stored = crate::clipboard::set(&text);
+    trace!(
+      "copy: {:?} ({} chars, system clipboard {})",
+      text,
+      text.chars().count(),
+      if stored { "accepted" } else { "rejected, fallback used" }
+    );
   }
 
   /// Paste the clipboard, wrapped in bracketed paste markers when the
@@ -304,8 +316,15 @@ fn clamp_selection(&mut self) {
   fn paste(&mut self) {
     let modes = self.screen.modes;
     let Some(text) = crate::clipboard::get() else {
+      trace!("paste: clipboard empty");
       return;
     };
+    trace!(
+      "paste: {} chars, bracketed {}, text {:?}",
+      text.chars().count(),
+      modes.bracketed_paste,
+      text
+    );
     let bytes = input::encode_paste(&text, &modes);
     self.write(&bytes);
   }
@@ -461,6 +480,26 @@ impl TontooApp for TerminalApp {
 
     self.sync_layout(fonts, viewport);
     self.sync_title();
+    if crate::debug::enabled() && self.screen.history_len() + self.screen.rows as usize == self.screen.rows as usize && self.grid.1 == BOOT_ROWS && self.bar.bounds().1 > 0.0 {
+      // First laid-out frame: the numbers that decide every hit test.
+      let (width, height) = self.renderer.cell_size();
+      trace!(
+        "layout: viewport {:.0}x{:.0} at ({:.0},{:.0}), bar h {:.0}, grid {}x{}, cell {:.2}x{:.2}, area ({:.0},{:.0}) {:.0}x{:.0}",
+        viewport.width,
+        viewport.height,
+        viewport.x,
+        viewport.y,
+        self.bar.bounds().3,
+        self.grid.0,
+        self.grid.1,
+        width,
+        height,
+        self.area.x,
+        self.area.y,
+        self.area.width,
+        self.area.height
+      );
+    }
 
     self.bar.set_palette(palette.titlebar_bg, palette.titlebar_text, palette.divider);
     self.bar.set_rect(viewport.x, viewport.y, viewport.width);
@@ -530,7 +569,7 @@ impl TontooApp for TerminalApp {
     }
   }
 
-  fn mouse_move(&mut self, x: f64, y: f64) {
+fn mouse_move(&mut self, x: f64, y: f64) {
     self.pointer = (x, y);
     self.bar.set_hover(x as f32, y as f32);
     if self.drag_anchor.is_none() {
@@ -538,6 +577,15 @@ impl TontooApp for TerminalApp {
     }
     if let Some(cell) = self.cell_under(x, y) {
       self.select_to(cell);
+      if crate::debug::enabled() {
+        trace!(
+          "mouse_move ({:.1},{:.1}) -> cell {:?}, selection {:?}",
+          x,
+          y,
+          cell,
+          self.selection.map(|selection| selection.text(&self.screen))
+        );
+      }
       self.report_mouse(
         PointerAction::Move,
         0,
@@ -593,7 +641,7 @@ impl TontooApp for TerminalApp {
     }
   }
 
-  fn mouse_button(
+fn mouse_button(
     &mut self,
     button: MouseButtonKind,
     pressed: bool,
@@ -601,7 +649,22 @@ impl TontooApp for TerminalApp {
     y: f64,
     modifiers: Modifiers,
   ) {
-    let Some(cell) = self.cell_under(x, y) else {
+    let cell = self.cell_under(x, y);
+    if crate::debug::enabled() {
+      trace!(
+        "mouse_button {:?} {} at ({:.1},{:.1}) mods(ctrl={} shift={} alt={} super={}) -> cell {:?}",
+        button,
+        if pressed { "down" } else { "up" },
+        x,
+        y,
+        modifiers.ctrl,
+        modifiers.shift,
+        modifiers.alt,
+        modifiers.super_key,
+        cell
+      );
+    }
+    let Some(cell) = cell else {
       // A click on the title opens the current folder in Finder.
       if pressed && self.title_rect.contains(kurbo::Point::new(x, y)) {
         let cwd = if self.screen.cwd.is_empty() {
@@ -667,6 +730,15 @@ impl TontooApp for TerminalApp {
       }
       MouseButtonKind::Other(_) => {}
     }
+    if crate::debug::enabled() {
+      let selection = self.selection.map(|selection| selection.text(&self.screen));
+      trace!(
+        "  after press: anchor {:?}, selection {:?}, clicks {}",
+        self.drag_anchor,
+        selection,
+        self.click_count
+      );
+    }
   }
 
   fn set_focused(&mut self, focused: bool) {
@@ -679,19 +751,34 @@ fn raw_key(&mut self, press: &KeyPress) {
       return;
     }
     let modes = self.screen.modes;
+    let chord = shortcut(press);
+
+    if crate::debug::enabled() {
+      trace!(
+        "raw_key {:?} mods(ctrl={} shift={} alt={} super={}) text {:?} repeat={} -> shortcut {:?}",
+        press.key,
+        press.modifiers.ctrl,
+        press.modifiers.shift,
+        press.modifiers.alt,
+        press.modifiers.super_key,
+        press.text,
+        press.repeat,
+        chord
+      );
+    }
 
     // Clipboard chords. Ctrl+C and Ctrl+V stay shell input (SIGINT and
     // "quote next"), so copy and paste are on Super (Command) and the
     // Ctrl+Shift pair a shell never uses, plus the X11 Insert pair.
-    if let Some(Shortcut::Copy) = shortcut(press) {
+    if let Some(Shortcut::Copy) = chord {
       self.copy_selection();
       return;
     }
-    if let Some(Shortcut::Paste) = shortcut(press) {
+    if let Some(Shortcut::Paste) = chord {
       self.paste();
       return;
     }
-    if let Some(Shortcut::SelectAll) = shortcut(press) {
+    if let Some(Shortcut::SelectAll) = chord {
       let last = self.screen.total_lines().saturating_sub(1);
       self.selection = Some(Selection::new((0, 0), (last, self.screen.cols)));
       return;

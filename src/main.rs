@@ -8,6 +8,15 @@
 //! body is the flat TontooOS background token (`#1b2022` dark,
 //! `#ffffff` light). Default shell is `zsh`.
 
+/// Trace line, printed when `TONTOO_TERMINAL_DEBUG=1` is set.
+macro_rules! trace {
+  ($($arg:tt)*) => {
+    crate::debug::trace(format_args!($($arg)*))
+  };
+}
+
+#[macro_use]
+mod debug;
 mod app;
 mod clipboard;
 mod config;
@@ -27,6 +36,12 @@ use TontooUI::renderer::window::run;
 fn main() {
   lang::init();
   let app = app::TerminalApp::new();
+  trace!(
+    "start: shell {:?}, font {} px, tracing {}",
+    config::resolve_shell(),
+    config::font_size(),
+    crate::debug::enabled()
+  );
   if let Err(error) = run(
     &lang::t("app.title"),
     config::WINDOW_WIDTH,
