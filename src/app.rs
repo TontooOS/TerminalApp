@@ -470,6 +470,16 @@ impl TerminalApp {
       height: (viewport.height - bar_height).max(0.0),
     };
     self.sync_grid();
+    if crate::debug::enabled() {
+      let (cols, rows) = (self.screen.cols, self.screen.rows);
+      let (cell_w, cell_h) = self.renderer.cell_size();
+      trace!(
+        "  resize: viewport {:.1}x{:.1} scale {:.2}, grid {cols}x{rows}, cell {cell_w:.2}x{cell_h:.2}",
+        viewport.width,
+        viewport.height,
+        fonts.scale
+      );
+    }
   }
   /// Select the whole screen, stopping at the last line that has
   /// content so a fresh shell selects its text instead of every empty
