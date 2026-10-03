@@ -67,6 +67,7 @@ pub struct TerminalApp {
   title_scale: f32,
   now: f64,
   shell_stopped: bool,
+  traced_layout: bool,
 }
 
 impl TerminalApp {
@@ -105,6 +106,7 @@ impl TerminalApp {
       title_scale: 0.0,
       now: 0.0,
       shell_stopped: false,
+      traced_layout: false,
     }
   }
 
@@ -480,8 +482,8 @@ impl TontooApp for TerminalApp {
 
     self.sync_layout(fonts, viewport);
     self.sync_title();
-    if crate::debug::enabled() && self.screen.history_len() + self.screen.rows as usize == self.screen.rows as usize && self.grid.1 == BOOT_ROWS && self.bar.bounds().1 > 0.0 {
-      // First laid-out frame: the numbers that decide every hit test.
+    if crate::debug::enabled() && !self.traced_layout {
+      self.traced_layout = true;
       let (width, height) = self.renderer.cell_size();
       trace!(
         "layout: viewport {:.0}x{:.0} at ({:.0},{:.0}), bar h {:.0}, grid {}x{}, cell {:.2}x{:.2}, area ({:.0},{:.0}) {:.0}x{:.0}",
@@ -751,7 +753,7 @@ fn raw_key(&mut self, press: &KeyPress) {
       return;
     }
     let modes = self.screen.modes;
-    let chord = shortcut(press);
+    let chord = shortcut(press, self.selection.is_some());
 
     if crate::debug::enabled() {
       trace!(
@@ -831,26 +833,31 @@ enum Shortcut {
   SelectAll,
 }
 
-/// Resolve one key press to a shortcut, or `None` when it is normal
-/// shell input.
+/// Resolve one key press to a clipboard shortcut, or `None` when it is
+/// normal shell input.
 ///
 /// | Shortcut | Chords |
 /// |---|---|
-/// | `Copy` | `Super+C`, `Ctrl+Shift+C`, `Ctrl+Insert` |
-/// | `Paste` | `Super+V`, `Ctrl+Shift+V`, `Shift+Insert` |
+/// | `Copy` | `Super+C`, `Ctrl+Shift+C`, `Ctrl+Insert`, `Ctrl+C` while text is selected |
+/// | `Paste` | `Super+V`, `Ctrl+Shift+V`, `Shift+Insert`, `Ctrl+V` |
 /// | `SelectAll` | `Super+A`, `Ctrl+Shift+A` |
 ///
-/// `Ctrl+C` and `Ctrl+V` are deliberately absent: in a terminal they
-/// are SIGINT and "quote next", and stealing them would break every
-/// running program.
-fn shortcut(press: &KeyPress) -> Option<Shortcut> {
+/// `Ctrl+C` only copies when a selection exists, otherwise it stays the
+/// interrupt, so a running program can still be stopped. `Ctrl+A` is
+/// never taken because the shell reads it as "start of line".
+///
+/// The plain Ctrl chords matter: some Wayland setups never deliver the
+/// shift modifier at all, so copy and paste must not depend on it.
+fn shortcut(press: &KeyPress, has_selection: bool) -> Option<Shortcut> {
   let modifiers = press.modifiers;
   let super_chord = modifiers.super_key && !modifiers.ctrl && !modifiers.shift;
   let ctrl_shift = modifiers.ctrl && modifiers.shift && !modifiers.super_key;
   match press.key {
     RawKey::Character(ch) => match ch.to_ascii_lowercase() {
       'c' if super_chord || ctrl_shift => Some(Shortcut::Copy),
+      'c' if modifiers.ctrl && !modifiers.shift && has_selection => Some(Shortcut::Copy),
       'v' if super_chord || ctrl_shift => Some(Shortcut::Paste),
+      'v' if modifiers.ctrl && !modifiers.shift => Some(Shortcut::Paste),
       'a' if super_chord || ctrl_shift => Some(Shortcut::SelectAll),
       _ => None,
     },
@@ -1012,58 +1019,88 @@ mod tests {
       ..Modifiers::default()
     };
     assert_eq!(
-      shortcut(&press(RawKey::Character('c'), super_only)),
+      shortcut(&press(RawKey::Character('c'), super_only), true),
       Some(Shortcut::Copy)
     );
     assert_eq!(
-      shortcut(&press(RawKey::Character('C'), ctrl_shift)),
+      shortcut(&press(RawKey::Character('C'), ctrl_shift), true),
       Some(Shortcut::Copy)
     );
     assert_eq!(
-      shortcut(&press(RawKey::Insert, ctrl)),
+      shortcut(&press(RawKey::Insert, ctrl), true),
       Some(Shortcut::Copy)
     );
     assert_eq!(
-      shortcut(&press(RawKey::Character('v'), super_only)),
+      shortcut(&press(RawKey::Character('v'), super_only), false),
       Some(Shortcut::Paste)
     );
     assert_eq!(
-      shortcut(&press(RawKey::Insert, shift)),
+      shortcut(&press(RawKey::Insert, shift), false),
       Some(Shortcut::Paste)
     );
     assert_eq!(
-      shortcut(&press(RawKey::Character('a'), super_only)),
+      shortcut(&press(RawKey::Character('a'), super_only), false),
       Some(Shortcut::SelectAll)
     );
   }
 
   #[test]
-  fn ctrl_c_and_ctrl_v_stay_shell_input() {
+  fn plain_ctrl_v_pastes_without_shift() {
+    // Some Wayland setups never report shift, so paste must work on the
+    // plain chord alone.
     let ctrl = Modifiers {
       ctrl: true,
       ..Modifiers::default()
     };
-    assert_eq!(shortcut(&press(RawKey::Character('c'), ctrl)), None);
-    assert_eq!(shortcut(&press(RawKey::Character('v'), ctrl)), None);
-    let modes = Modes::default();
+    assert_eq!(
+      shortcut(&press(RawKey::Character('v'), ctrl), false),
+      Some(Shortcut::Paste)
+    );
+  }
+
+  #[test]
+  fn ctrl_c_copies_only_with_a_selection() {
+    let ctrl = Modifiers {
+      ctrl: true,
+      ..Modifiers::default()
+    };
+    assert_eq!(
+      shortcut(&press(RawKey::Character('c'), ctrl), true),
+      Some(Shortcut::Copy),
+      "a selection makes Ctrl+C copy"
+    );
+    assert_eq!(
+      shortcut(&press(RawKey::Character('c'), ctrl), false),
+      None,
+      "without a selection Ctrl+C stays the interrupt"
+    );
     let bytes = input::encode_key(
       &KeyInput {
         key: RawKey::Character('c'),
         modifiers: ctrl,
         text: Some("c".to_string()),
       },
-      &modes,
+      &Modes::default(),
     );
-    assert_eq!(bytes, vec![0x03], "Ctrl+C still sends the interrupt");
-    assert_eq!(super_only_key().0, false);
+    assert_eq!(bytes, vec![0x03], "and the interrupt still reaches the shell");
   }
 
-  fn super_only_key() -> (bool, bool) {
-    let super_only = Modifiers {
-      super_key: true,
+  #[test]
+  fn ctrl_a_stays_shell_input() {
+    let ctrl = Modifiers {
+      ctrl: true,
       ..Modifiers::default()
     };
-    (super_only.ctrl, super_only.shift)
+    assert_eq!(shortcut(&press(RawKey::Character('a'), ctrl), true), None);
+    let bytes = input::encode_key(
+      &KeyInput {
+        key: RawKey::Character('a'),
+        modifiers: ctrl,
+        text: Some("a".to_string()),
+      },
+      &Modes::default(),
+    );
+    assert_eq!(bytes, vec![0x01], "Ctrl+A is start of line");
   }
 
   #[test]

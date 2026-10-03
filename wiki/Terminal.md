@@ -98,7 +98,7 @@ pub struct GridRenderer {
 | Background | `#1b2022` | `#ffffff` |
 | Text | `#d8d9d9` | `#272727` |
 | Title bar | `ThemeWatcher` palette | `ThemeWatcher` palette |
-| Selection | `rgba(74, 90, 98, 153)` | `rgba(191, 212, 242, 153)` |
+| Selection | `rgba(110, 147, 173, 179)` | `rgba(156, 196, 240, 179)` |
 
 - Program output uses the classic 16 color ANSI palette
   (`config::PALETTE`); black, white and bright black are lifted or
@@ -159,16 +159,19 @@ is buffered.
 
 - `App::raw_key` supplies every key with the full modifier state, so
   Ctrl chords, Tab and the function keys reach the shell unchanged.
-- Clipboard shortcuts resolve in `shortcut(press)`:
+- Clipboard shortcuts resolve in `shortcut(press, has_selection)`:
 
   | Shortcut | Chords |
   |---|---|
-  | Copy | `Super+C`, `Ctrl+Shift+C`, `Ctrl+Insert` |
-  | Paste | `Super+V`, `Ctrl+Shift+V`, `Shift+Insert` |
+  | Copy | `Super+C`, `Ctrl+Shift+C`, `Ctrl+Insert`, `Ctrl+C` **while text is selected** |
+  | Paste | `Super+V`, `Ctrl+Shift+V`, `Shift+Insert`, `Ctrl+V` |
   | Select all | `Super+A`, `Ctrl+Shift+A` |
 
-  `Ctrl+C` and `Ctrl+V` deliberately stay shell input (`SIGINT` and
-  "quote next"); stealing them would break every running program.
+  `Ctrl+C` copies when a selection exists and stays the interrupt
+  otherwise, so a running program can always be stopped. `Ctrl+A` is
+  never taken, because the shell reads it as "start of line". The plain
+  Ctrl chords are deliberate: some Wayland setups never deliver the shift
+  modifier, so copy and paste must not depend on it.
 - Middle click and right click paste; left drag selects, double click
   selects a word, triple click a line, Shift+click extends.
 - Shift with arrows, Home or End extends the selection instead of

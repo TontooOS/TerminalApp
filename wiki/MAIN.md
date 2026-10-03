@@ -41,6 +41,13 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-03: Copy and paste on the plain Ctrl chords. A trace run
+  (`TONTOO_TERMINAL_DEBUG=1`) showed the shell never reports the shift
+  modifier on this system, so `Ctrl+Shift+V` was unreachable and plain
+  `Ctrl+V` went to the shell as `0x16`. `Ctrl+V` now always pastes,
+  `Ctrl+C` copies when a selection exists and stays the interrupt
+  otherwise, and `Ctrl+A` stays "start of line". The selection veil is
+  also stronger, it was too subtle to notice against the dark body.
 - 2026-10-02: App icon is a Tontoo `.tico` container
   (`Resources/icon.tico`), converted from `Resources/app_icon.png` with
   the CoreIcon `tico_from_png` example: one non-recolorable image layer

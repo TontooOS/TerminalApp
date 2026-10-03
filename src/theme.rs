@@ -55,12 +55,13 @@ pub fn titlebar_text(dark: bool) -> Color {
   }
 }
 
-/// Selection highlight: a low contrast veil over the cell colors.
+/// Selection highlight: a clearly visible veil over the cell colors,
+/// light enough to keep the glyphs readable.
 pub fn selection_fill(dark: bool) -> Color {
   if dark {
-    Color::from_rgba8(0x4a, 0x5a, 0x62, 0x99)
+    Color::from_rgba8(0x6e, 0x93, 0xad, 0xb3)
   } else {
-    Color::from_rgba8(0xbf, 0xd4, 0xf2, 0x99)
+    Color::from_rgba8(0x9c, 0xc4, 0xf0, 0xb3)
   }
 }
 
