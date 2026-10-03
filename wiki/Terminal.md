@@ -238,6 +238,49 @@ returns the key itself.
 | `ZDOTDIR` | Points zsh at the generated prompt directory |
 | `TONTOO_REALHOME` | Real home, read by the generated `.zshrc` |
 
+## App Icon
+
+The icon is a Tontoo `.tico` container at `Resources/icon.tico`, built
+from `Resources/app_icon.png` with the CoreIcon example
+(`examples/tico_from_png`, the same route the Xcode app uses):
+
+```bash
+cd ../../TontooLibs/CoreIcon/examples/tico_from_png
+cargo run -- \
+  ../../../../TontooMicroApps/Terminal/Resources/app_icon.png \
+  Terminal \
+  ../../../../TontooMicroApps/Terminal/Resources/icon.tico \
+  /tmp/terminal-icon-preview.png
+```
+
+| Argument | Value |
+|---|---|
+| Input | `Resources/app_icon.png`, 1024x1024 (the CoreIcon canvas) |
+| Name | `Terminal`, written into the container manifest |
+| Output | `Resources/icon.tico`, about 3.7 MB |
+| Preview | optional PNG; the default render there, a tinted render beside it |
+
+The example stores the artwork as exactly one image layer
+(`layer/00.tlyr`) over a transparent background and flags it
+non-recolorable, so the container keeps the artwork colors while
+`TicoIcon::render` adds the Apple icon finish (squircle, glass depth)
+on top. It finishes with a round-trip check: the written container is
+loaded again and rendered, and the layer count and render size are
+printed.
+
+`tontoo.proj` points at the container:
+
+```json
+{
+  "bundle_id": "com.tontoo.terminal",
+  "name": "Terminal",
+  "version": "27.0.0",
+  "icon": "Resources/icon.tico"
+}
+```
+
+`app_icon.png` stays next to it as the source for a regeneration.
+
 ## Cross References
 
 - [MAIN.md](MAIN.md) – project overview and changelog

@@ -41,6 +41,12 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-02: App icon is a Tontoo `.tico` container
+  (`Resources/icon.tico`), converted from `Resources/app_icon.png` with
+  the CoreIcon `tico_from_png` example: one non-recolorable image layer
+  over a transparent background, Apple icon finish applied by
+  `TicoIcon::render`. `tontoo.proj` points at the container, the PNG
+  stays as the regeneration source.
 - 2026-10-02: Selection and clipboard fixes. The background fill now
   splits a style run at the selection boundary, so a selection inside a
   long run (a whole prompt line) is painted instead of silently
