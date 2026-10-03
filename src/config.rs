@@ -9,9 +9,11 @@
 //! light mode. Program output keeps its own ANSI palette.
 
 /// Window size in logical px. The content viewport sits inside the
-/// window frame, so the terminal area is a little smaller.
-pub const WINDOW_WIDTH: u32 = 1170;
-pub const WINDOW_HEIGHT: u32 = 600;
+/// window frame, so the terminal area is a little smaller: the frame
+/// takes 24 px on each side, which leaves a 756x511 viewport and a
+/// 96x27 grid at 13 px.
+pub const WINDOW_WIDTH: u32 = 804;
+pub const WINDOW_HEIGHT: u32 = 559;
 
 /// Default shell for TontooOS Terminal.
 pub const DEFAULT_SHELL: &str = "/bin/zsh";

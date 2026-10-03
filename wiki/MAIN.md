@@ -41,6 +41,9 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-03: Default window size is now 804x559, measured from a debug
+  run: the window frame takes 24 px per side, so the content viewport is
+  756x511 and the grid 96x27 at 13 px.
 - 2026-10-03: The right click menu no longer shows a stray "Terminal"
   button on startup. A `Menu` without an anchor draws its button, so it
   is only placed and drawn while it is open; the first right click moved
