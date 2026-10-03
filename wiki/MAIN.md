@@ -41,6 +41,10 @@ See [Terminal.md](Terminal.md) for details.
 
 ## Changelog
 
+- 2026-10-03: The right click menu no longer shows a stray "Terminal"
+  button on startup. A `Menu` without an anchor draws its button, so it
+  is only placed and drawn while it is open; the first right click moved
+  it to the pointer and made it disappear.
 - 2026-10-03: Right click menu and the real selection paint bug. The
   background fill iterated the style runs and filled only the first
   segment of each one, so every selection that started inside a run was

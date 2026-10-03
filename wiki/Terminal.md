@@ -185,6 +185,11 @@ is buffered.
   grid, not on the title bar. `Select All` stops at the last line with
   content, so a fresh shell selects its text instead of every empty row
   below it.
+
+  A `Menu` without an anchor draws its own button, so `draw` only places
+  and draws the menu while it is open. Otherwise the panel would sit on
+  screen as a stray "Terminal" button until the first right click moved
+  it to the pointer.
 - Shift with arrows, Home or End extends the selection instead of
   sending the key.
 - Mouse reports follow xterm: SGR (`1006`) when enabled, X10 otherwise.

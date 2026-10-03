@@ -612,10 +612,14 @@ impl TontooApp for TerminalApp {
       }
     }
 
-    // Menu overlay last so the panel floats above the grid.
-    self.menu
-      .place(fonts, viewport.x, viewport.y, viewport.width, viewport.height);
-    self.menu.draw(scene, fonts, _images);
+    // Menu overlay last so the panel floats above the grid. A `Menu`
+    // without an anchor draws its button, so it is only placed and drawn
+    // while it is open.
+    if self.menu_open() {
+      self.menu
+        .place(fonts, viewport.x, viewport.y, viewport.width, viewport.height);
+      self.menu.draw(scene, fonts, _images);
+    }
   }
 
   fn background(&self) -> Color {
@@ -1105,6 +1109,17 @@ mod tests {
       pressed: true,
       repeat: false,
     }
+  }
+
+  #[test]
+  fn a_fresh_app_shows_no_menu() {
+    // An unanchored `Menu` draws its button, so the app must keep the
+    // menu closed and unplaced until a right click opens it.
+    let (app, _width, _height) = app_with("hello");
+    assert!(!app.menu.is_open());
+    assert!(!app.menu_open());
+    let (_x, _y, w, _h) = app.menu.button_rect();
+    assert_eq!(w, 0.0, "an unplaced menu has no button to draw");
   }
 
   #[test]
